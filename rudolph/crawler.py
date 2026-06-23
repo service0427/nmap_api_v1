@@ -262,7 +262,7 @@ def run_crawler(min_id=None, debug=False, sync=False):
                 for item in active_items:
                     sid = str(item["sid"])
                     dest_id = item["code"]
-                    work_count = 5 # Rudolph slot work_amount is 5
+                    work_count = 10 # Rudolph slot work_amount is 10
                     
                     cursor.execute("""
                         INSERT INTO raw_slots_tmp (site, sid, dest_id, work_count, work_date, created_at)

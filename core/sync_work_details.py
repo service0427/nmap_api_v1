@@ -20,11 +20,7 @@ from core.utils import get_kst_now, get_kst_date
 def get_default_work_amount(site_db_name):
     """Fetches the default_work_amount setting from the site's local database."""
     db_config = Config.get_db_config()
-    # Clone the config and change the database name
     site_db_config = db_config.copy()
-    # If the user is 'nmap', it might not have access to ssolup/ghost2026.
-    # But since we saw the 'slot' user can access it, let's try using the credentials from .env first,
-    # or fallback to slot/Tech1324 if needed.
     site_db_config['database'] = site_db_name
     
     try:
@@ -35,8 +31,21 @@ def get_default_work_amount(site_db_name):
             if row and row.get('value'):
                 return int(row['value'])
     except Exception as e:
-        print(f"[{site_db_name.upper()}] Failed to fetch default_work_amount from DB ({e}). Falling back to 5.")
+        # Fallback to slot user
+        try:
+            fallback_config = site_db_config.copy()
+            fallback_config['user'] = 'slot'
+            fallback_config['password'] = 'Tech1324'
+            conn = pymysql.connect(**fallback_config)
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT value FROM system_settings WHERE `key` = 'default_work_amount'")
+                row = cursor.fetchone()
+                if row and row.get('value'):
+                    return int(row['value'])
+        except Exception as e2:
+            print(f"[{site_db_name.upper()}] Failed to fetch default_work_amount from DB ({e2}). Falling back to 5.")
     return 5
+
 
 def fetch_all_slots(api_url, target_date_str):
     """Fetches all slots page by page from the work-details API."""
@@ -204,7 +213,7 @@ def sync_rudolph_work(cursor, target_date_str):
     # 4. Check hash of the active slots to skip if no changes
     # Sort by slot ID to make hash deterministic
     active_slots.sort(key=lambda x: int(x.get("id", 0)))
-    hash_data = [(str(x.get("id")), extract_place_id(x.get("url")), 5) for x in active_slots]
+    hash_data = [(str(x.get("id")), extract_place_id(x.get("url")), 10) for x in active_slots]
     new_hash = hashlib.md5(json.dumps(hash_data).encode()).hexdigest()
     
     if os.path.exists(hash_file):
@@ -232,7 +241,7 @@ def sync_rudolph_work(cursor, target_date_str):
         sid = str(item.get("id"))
         url = str(item.get("url"))
         dest_id = extract_place_id(url)
-        work_count = 5 # Rudolph slot work_amount is 5
+        work_count = 10 # Rudolph slot work_amount is 10
         
         cursor.execute("""
             INSERT INTO raw_slots_tmp (site, sid, dest_id, work_count, work_date, created_at)
@@ -240,7 +249,7 @@ def sync_rudolph_work(cursor, target_date_str):
         """, (sid, dest_id, work_count, target_date_str, kst_now))
         inserted_cnt += 1
         
-    print(f"  [RUDOLPH] Successfully inserted {inserted_cnt} slots (total workload: {inserted_cnt * 5}).")
+    print(f"  [RUDOLPH] Successfully inserted {inserted_cnt} slots (total workload: {inserted_cnt * 10}).")
     
     # 7. Save hash
     with open(hash_file, "w") as f:
