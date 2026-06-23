@@ -466,7 +466,16 @@ def sync_work_details(target_date_str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sync detailed slot workloads into raw_slots_tmp")
     parser.add_argument("--date", help="Target date (YYYY-MM-DD), defaults to today")
+    parser.add_argument("--force", action="store_true", help="Force sync bypassing time/cron restrictions")
     args = parser.parse_args()
+    
+    # Hourly restriction: Only run at 5th minute, excluding 01:00 ~ 09:59 KST
+    if not args.force and not args.date:
+        kst_now = get_kst_now()
+        if kst_now.minute != 5 or (1 <= kst_now.hour <= 9):
+            # Print minimal output so it doesn't clutter log files too much
+            print(f"[Skipped] Time restriction: {kst_now.strftime('%H:%M:%S')} KST is not XX:05 (excluding 01:00-09:59)")
+            sys.exit(0)
     
     if args.date:
         target_date_str = args.date
@@ -474,3 +483,4 @@ if __name__ == "__main__":
         target_date_str = get_kst_date().isoformat()
         
     sync_work_details(target_date_str)
+
