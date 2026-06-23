@@ -44,6 +44,41 @@ db_pool = PooledDB(
     **Config.get_db_config()
 )
 
+# --- Legacy DB Pool for Dual Writing (Removable/Toggleable Sync) ---
+ENABLE_LEGACY_SYNC = True
+legacy_db_pool = None
+
+if ENABLE_LEGACY_SYNC:
+    try:
+        legacy_db_config = Config.get_db_config()
+        legacy_db_config['database'] = 'nmap_api'
+        legacy_db_pool = PooledDB(
+            creator=pymysql,
+            mincached=2,
+            maxcached=10,
+            maxconnections=30,
+            blocking=True,
+            **legacy_db_config
+        )
+    except Exception as e:
+        print(f"Failed to initialize legacy db pool: {e}")
+
+@contextmanager
+def get_legacy_db_cursor():
+    """Fetches a connection from the legacy pool and provides a cursor."""
+    if not ENABLE_LEGACY_SYNC or legacy_db_pool is None:
+        raise RuntimeError("Legacy sync is disabled or legacy pool is not initialized")
+    conn = legacy_db_pool.connection()
+    try:
+        with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+            yield cursor
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 scraper_instance = NaverPlaceScraper()
 
 # --- Monitoring State ---
@@ -51,56 +86,167 @@ request_counter = 0
 active_devices: Set[str] = set()
 last_net_io = psutil.net_io_counters()
 
+def update_legacy_device_stats(cursor, device_id, success=0, fail=0, alloc_fail=0, duration=0):
+    kst_now, kst_date = get_kst_now(), get_kst_date()
+    sql = """
+        INSERT INTO device_daily_stats (device_id, work_date, success_cnt, fail_cnt, alloc_fail_cnt, total_duration_sec, last_active_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE 
+            success_cnt = success_cnt + VALUES(success_cnt),
+            fail_cnt = fail_cnt + VALUES(fail_cnt),
+            alloc_fail_cnt = alloc_fail_cnt + VALUES(alloc_fail_cnt),
+            total_duration_sec = total_duration_sec + VALUES(total_duration_sec),
+            last_active_at = VALUES(last_active_at)
+    """
+    cursor.execute(sql, (device_id, kst_date, success, fail, alloc_fail, duration, kst_now))
+
 def sync_device_ip_to_legacy(device_id: str, ip: str):
-    if not ip or ip == "Unknown" or ip == "0.0.0.0": return
+    if not ENABLE_LEGACY_SYNC or legacy_db_pool is None:
+        return
     try:
-        conf = Config.get_source_fsd_config()
-        if not conf.get('host'): return
-        conn = pymysql.connect(**conf, autocommit=True)
-        with conn.cursor() as cursor:
-            cursor.execute("UPDATE devices SET current_ip=%s, ip_updated_at=NOW() WHERE device_id=%s", (ip, device_id))
-        conn.close()
-    except: pass
+        kst_now = get_kst_now()
+        with get_legacy_db_cursor() as cursor:
+            cursor.execute("UPDATE devices SET current_ip = %s, ip_updated_at = %s WHERE device_id = %s", (ip, kst_now, device_id))
+    except Exception as e:
+        print(f"[Sync Error] sync_device_ip_to_legacy failed: {e}")
 
-def sync_legacy_task_start(device_id: str, dest_id: str, dest_name: str, ip: str, start_time, distance_m: int, msg: str):
+def sync_legacy_task_start(v1_task_id: int, device_id: str, dest_id: str, dest_name: str, ip: str, start_time, distance_m: int, msg: str, spoofed_identity: str = None, site_id: str = None, sid: int = None, speed_kmh: float = None):
+    if not ENABLE_LEGACY_SYNC or legacy_db_pool is None:
+        return
     try:
-        conf = Config.get_source_fsd_config()
-        if not conf.get('host'): return
-        conn = pymysql.connect(**conf, autocommit=True)
-        with conn.cursor() as cursor:
-            cursor.execute("INSERT INTO task_log (device_id, dest_id, dest_name, ip, status, start_time, distance_m) VALUES (%s, %s, %s, %s, 'ALLOCATED', %s, %s)", 
-                           (device_id, dest_id, dest_name, ip, start_time, distance_m))
-        conn.close()
-    except Exception as e: print(f"[Sync-Legacy] Start Error: {e}")
+        kst_date = get_kst_date()
+        with get_legacy_db_cursor() as cursor:
+            update_legacy_device_stats(cursor, device_id)
+            cursor.execute("""
+                INSERT INTO tasks_log (work_date, site_id, sid, dest_id, dest_name, device_id, ip, spoofed_identity, status, result_msg, start_time, distance_m, speed_kmh, created_at, legacy_task_id, legacy_synced)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WORKING', %s, %s, %s, %s, %s, %s, 1)
+            """, (kst_date, site_id, sid, dest_id, dest_name, device_id, ip, spoofed_identity, msg, start_time, distance_m, speed_kmh, start_time, v1_task_id))
+    except Exception as e:
+        print(f"[Sync Error] sync_legacy_task_start failed: {e}")
 
-def sync_legacy_task_status_update(device_id: str, status: str, end_time, ip: str = None, client_dist: int = 0, client_time: int = 0):
+def sync_legacy_task_status_update(v1_task_id: int, device_id: str, status: str, end_time, ip: str = None, client_dist: int = 0, client_time: int = 0):
+    if not ENABLE_LEGACY_SYNC or legacy_db_pool is None:
+        return
     try:
-        conf = Config.get_source_fsd_config()
-        if not conf.get('host'): return
-        conn = pymysql.connect(**conf, autocommit=True)
-        with conn.cursor() as cursor:
-            update_parts = ["status=%s", "end_time=%s", "distance_m=%s", "duration_sec=%s"]
-            params = [status, end_time, client_dist, client_time]
+        with get_legacy_db_cursor() as cursor:
+            update_legacy_device_stats(cursor, device_id, duration=client_time)
             if ip and ip != "Unknown":
-                update_parts.append("ip=%s")
-                params.append(ip)
-            params.append(device_id)
-            cursor.execute(f"UPDATE task_log SET {', '.join(update_parts)} WHERE device_id=%s AND status NOT LIKE '%%SUCCESS%%' AND status NOT LIKE '%%FAIL%%' ORDER BY id DESC LIMIT 1", params)
-        conn.close()
-    except Exception as e: print(f"[Sync-Legacy] Update Error: {e}")
+                cursor.execute("UPDATE devices SET current_ip=%s, ip_updated_at=%s WHERE device_id=%s", (ip, end_time, device_id))
+            
+            update_parts, params = ["status = %s"], [status]
+            if ip and ip != "Unknown": update_parts.append("ip = %s"); params.append(ip)
+            if client_dist: update_parts.append("distance_m = %s"); params.append(client_dist)
+            if client_time: update_parts.append("duration_sec = %s"); params.append(client_time)
+            
+            params.append(v1_task_id)
+            cursor.execute(f"UPDATE tasks_log SET {', '.join(update_parts)} WHERE legacy_task_id = %s", tuple(params))
+            if cursor.rowcount == 0:
+                # Fallback by device_id
+                cursor.execute(f"UPDATE tasks_log SET {', '.join(update_parts)} WHERE device_id = %s AND status NOT IN ('SUCCESS', 'FAIL') AND status NOT LIKE 'FAIL%%' ORDER BY id DESC LIMIT 1", tuple(params[:-1] + [device_id]))
+    except Exception as e:
+        print(f"[Sync Error] sync_legacy_task_status_update failed: {e}")
 
-def sync_legacy_task_end(site_id: str, device_id: str, dest_id: str, status: str, end_time, client_dist: int, client_time: int, msg: str):
-    if site_id == 'test': return
+def sync_legacy_task_end(v1_task_id: int, site_id: str, device_id: str, dest_id: str, status: str, end_time, client_dist: int, client_time: int, msg: str):
+    if not ENABLE_LEGACY_SYNC or legacy_db_pool is None:
+        return
     try:
-        sync_legacy_task_status_update(device_id, status, end_time, client_dist=client_dist, client_time=client_time)
-        conf = Config.get_source_fsd_config()
-        if not conf.get('host'): return
-        conn = pymysql.connect(**conf, autocommit=True)
-        with conn.cursor() as cursor:
+        kst_date = get_kst_date()
+        with get_legacy_db_cursor() as cursor:
             if status == 'SUCCESS':
-                cursor.execute("UPDATE daily_tasks SET success_count = success_count + 1, last_success_at = %s WHERE dest_id = %s AND work_date = %s", (end_time, dest_id, get_kst_date()))
-        conn.close()
-    except Exception as e: print(f"[Sync-Legacy] End Error: {e}")
+                update_legacy_device_stats(cursor, device_id, success=1)
+            else:
+                update_legacy_device_stats(cursor, device_id, fail=1)
+                
+            client_speed = 0.0
+            if client_dist and client_time:
+                try: client_speed = round((client_dist / 1000.0) / (client_time / 3600.0), 2)
+                except: pass
+
+            cursor.execute("""
+                UPDATE tasks_log 
+                SET status = %s, result_msg = %s, end_time = %s, 
+                    client_dist_m = %s, client_time_s = %s, client_speed_kmh = %s,
+                    duration_sec = %s
+                WHERE legacy_task_id = %s
+            """, (status, msg, end_time, client_dist, client_time, client_speed, client_time, v1_task_id))
+            
+            if cursor.rowcount == 0:
+                cursor.execute("""
+                    UPDATE tasks_log 
+                    SET status = %s, result_msg = %s, end_time = %s, 
+                        client_dist_m = %s, client_time_s = %s, client_speed_kmh = %s,
+                        duration_sec = %s
+                    WHERE device_id = %s AND dest_id = %s AND status NOT IN ('SUCCESS', 'FAIL') AND status NOT LIKE 'FAIL%%'
+                    ORDER BY id DESC LIMIT 1
+                """, (status, msg, end_time, client_dist, client_time, client_speed, client_time, device_id, dest_id))
+
+            # Query starting distance from legacy tasks_log to update daily_progress correctly
+            cursor.execute("SELECT distance_m, ip FROM tasks_log WHERE legacy_task_id = %s", (v1_task_id,))
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute("SELECT distance_m, ip FROM tasks_log WHERE device_id = %s AND dest_id = %s ORDER BY id DESC LIMIT 1", (device_id, dest_id))
+                row = cursor.fetchone()
+            
+            last_dist_m = row['distance_m'] if row else 800
+            task_ip = row['ip'] if row else None
+            
+            if status == 'SUCCESS':
+                cursor.execute("""
+                    INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at)
+                    VALUES (%s, %s, %s, 1, 0, 0, %s, %s)
+                    ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), fail_cnt=0, alloc_fail_cnt=0, last_dist_m=VALUES(last_dist_m)
+                """, (kst_date, site_id, dest_id, last_dist_m, end_time))
+                
+                if task_ip:
+                    cursor.execute("""
+                        INSERT INTO ip_success_history (ip, dest_id, last_success_at)
+                        VALUES (%s, %s, %s)
+                        ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)
+                    """, (task_ip, dest_id, end_time))
+            else:
+                cursor.execute("""
+                    INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_fail_at)
+                    VALUES (%s, %s, %s, 0, 1, 0, %s, %s)
+                    ON DUPLICATE KEY UPDATE fail_cnt=fail_cnt+1, last_fail_at=VALUES(last_fail_at)
+                """, (kst_date, site_id, dest_id, last_dist_m, end_time))
+    except Exception as e:
+        print(f"[Sync Error] sync_legacy_task_end failed: {e}")
+
+def sync_legacy_alloc_fail(site_id: str, dest_id: str):
+    if not ENABLE_LEGACY_SYNC or legacy_db_pool is None:
+        return
+    try:
+        kst_date = get_kst_date()
+        with get_legacy_db_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m)
+                VALUES (%s, %s, %s, 0, 0, 1, 0)
+                ON DUPLICATE KEY UPDATE alloc_fail_cnt = alloc_fail_cnt + 1
+            """, (kst_date, site_id, dest_id))
+    except Exception as e:
+        print(f"[Sync Error] sync_legacy_alloc_fail failed: {e}")
+
+def sync_legacy_lte_usage(modem_name: str, upload: int, download: int):
+    if not ENABLE_LEGACY_SYNC or legacy_db_pool is None:
+        return
+    try:
+        kst_date = get_kst_date()
+        with get_legacy_db_cursor() as cursor:
+            cursor.execute("SELECT id FROM lte_data_usage WHERE modem_name = %s AND work_date = %s", (modem_name, kst_date))
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("""
+                    UPDATE lte_data_usage 
+                    SET now_upload = %s, now_download = %s 
+                    WHERE id = %s
+                """, (upload, download, row['id']))
+            else:
+                cursor.execute("""
+                    INSERT INTO lte_data_usage (modem_name, work_date, init_upload, init_download, now_upload, now_download) 
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (modem_name, kst_date, upload, download, upload, download))
+    except Exception as e:
+        print(f"[Sync Error] sync_legacy_lte_usage failed: {e}")
 
 def format_address(addr: Optional[str]) -> Optional[str]:
     """
@@ -291,25 +437,24 @@ async def request_task(req: TaskRequest):
                 # 3. Candidate Selection
                 base_query = """
                     SELECT 
-                        s.site_id, min(s.sid) as sid, s.dest_id, p.name, p.address, p.lat, p.lng, 
+                        dp.site_id, NULL as sid, dp.dest_id, p.name, p.address, p.lat, p.lng, 
                         p.arr_min_s, p.arr_max_s, p.dist_min_m, p.dist_max_m, p.check_status, p.is_optimizer,
-                        SUM(s.work_count) as total_target, IFNULL(dp.success_cnt, 0) as total_success,
-                        SUM(s.work_count) - IFNULL(dp.success_cnt, 0) as remain_count,
-                        IFNULL(dp.fail_cnt, 0) as fail_cnt, IFNULL(dp.alloc_fail_cnt, 0) as alloc_fail_cnt,
-                        IFNULL(dp.last_dist_m, 800) as last_dist_m
-                    FROM raw_slots s
-                    LEFT JOIN places p ON s.dest_id = p.dest_id
-                    LEFT JOIN daily_progress dp ON s.site_id = dp.site_id AND s.dest_id = dp.dest_id AND dp.work_date = %s
-                    WHERE s.status = 'on' AND %s BETWEEN s.start_date AND s.end_date
-                      AND (p.check_status IS NULL OR p.check_status <> 'FAIL')
+                        dp.total_target, dp.success_cnt as total_success,
+                        (dp.total_target - dp.success_cnt) as remain_count,
+                        dp.fail_cnt, dp.alloc_fail_cnt,
+                        dp.last_dist_m
+                    FROM daily_progress dp
+                    JOIN places p ON dp.dest_id = p.dest_id
+                    WHERE dp.work_date = %s
+                      AND p.check_status IN ('VERIFIED', 'NORMAL')
                 """
-                params = [kst_date, kst_date]
-                if req.site_id: base_query += " AND s.site_id = %s"; params.append(req.site_id)
-                else: base_query += " AND s.site_id <> 'test'"
+                params = [kst_date]
+                if req.site_id: base_query += " AND dp.site_id = %s"; params.append(req.site_id)
+                else: base_query += " AND dp.site_id <> 'test'"
                 
                 base_query += """
-                    GROUP BY s.site_id, s.dest_id
-                    HAVING remain_count > 0 AND fail_cnt < 10
+                    AND (dp.total_target - dp.success_cnt) > 0 
+                    AND dp.fail_cnt < 10
                 """
                 cursor.execute(base_query, tuple(params))
                 all_raw_candidates = cursor.fetchall()
@@ -417,6 +562,7 @@ async def request_task(req: TaskRequest):
 
                         if not found_visible:
                              cursor.execute("UPDATE daily_progress SET alloc_fail_cnt = alloc_fail_cnt + 1 WHERE work_date=%s AND site_id=%s AND dest_id=%s", (kst_date, task['site_id'], task['dest_id']))
+                             sync_legacy_alloc_fail(task['site_id'], task['dest_id'])
                     
                     if found_visible:
                         final_speed = round((final_dist / 1000.0) / (final_arrival_s / 3600.0), 2)
@@ -439,18 +585,28 @@ async def request_task(req: TaskRequest):
                 spoofed_id = generate_spoofed_identity()
                 original_id = {"ssaid": device_row["orig_ssaid"], "adid": device_row["orig_adid"], "idfv": device_row["orig_idfv"], "ni": device_row["orig_ni"], "token": device_row["orig_token"]}
 
+                # 5-1. Fetch MIN(sid) to avoid 'sid' column cannot be null error
+                if task['site_id'] not in ('FSD', 'LUF', 'test'):
+                    cursor.execute("SELECT MIN(sid) as sid FROM raw_slots_tmp WHERE site = %s AND dest_id = %s AND work_date = %s", (task['site_id'], task['dest_id'], kst_date))
+                else:
+                    cursor.execute("SELECT MIN(sid) as sid FROM raw_slots WHERE site_id = %s AND dest_id = %s AND status = 'on' AND is_deleted = 0", (task['site_id'], task['dest_id']))
+                sid_row = cursor.fetchone()
+                task_sid = sid_row['sid'] if (sid_row and sid_row['sid'] is not None) else 0
+
                 # 6. Final Insertion & Response
                 msg_str = f"Start: {final_lat},{final_lng} | GoalTime: {final_arrival_s}s | Speed: {final_speed}km/h | Keyword: {search_keyword}"
                 cursor.execute("""
                     INSERT INTO tasks_log (work_date, site_id, sid, dest_id, dest_name, device_id, ip, spoofed_identity, status, result_msg, start_time, distance_m, speed_kmh, created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WORKING', %s, %s, %s, %s, %s)
-                """, (kst_date, task['site_id'], task['sid'], task['dest_id'], task['name'], req.device_id, client_ip, json.dumps(spoofed_id), msg_str, kst_now, int(final_dist), final_speed, kst_now))
+                """, (kst_date, task['site_id'], task_sid, task['dest_id'], task['name'], req.device_id, client_ip, json.dumps(spoofed_id), msg_str, kst_now, int(final_dist), final_speed, kst_now))
                 
+                v1_task_id = cursor.connection.insert_id()
+
                 # Legacy Dashboard Real-time Sync
                 if client_ip: sync_device_ip_to_legacy(req.device_id, client_ip)
-                sync_legacy_task_start(req.device_id, task['dest_id'], task['name'], client_ip, kst_now, int(final_dist), msg_str)
+                sync_legacy_task_start(v1_task_id, req.device_id, task['dest_id'], task['name'], client_ip, kst_now, int(final_dist), msg_str, spoofed_identity=json.dumps(spoofed_id), site_id=task['site_id'], sid=task_sid, speed_kmh=final_speed)
                 
-                return {"status": "ok", "task_id": cursor.connection.insert_id(), "device_seq": device_row['seq'], "destination": {"id": task['dest_id'], "target_name": task['name'], "search_keyword": search_keyword, "address": format_address(task['address']), "lat": float(task['lat']), "lng": float(task['lng'])}, "start_pos": {"lat": final_lat, "lng": final_lng, "speed_kmh": final_speed, "dist_m": final_dist}, "arrival_time": final_arrival_s, "identity": {"original": original_id, "spoofed": spoofed_id}}
+                return {"status": "ok", "task_id": v1_task_id, "device_seq": device_row['seq'], "destination": {"id": task['dest_id'], "target_name": task['name'], "search_keyword": search_keyword, "address": format_address(task['address']), "lat": float(task['lat']), "lng": float(task['lng'])}, "start_pos": {"lat": final_lat, "lng": final_lng, "speed_kmh": final_speed, "dist_m": final_dist}, "arrival_time": final_arrival_s, "identity": {"original": original_id, "spoofed": spoofed_id}}
     except Exception as e: print(f"CRITICAL ERROR: {req.device_id}: {e}"); raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @app.post("/api/v1/report_result")
@@ -465,7 +621,7 @@ async def report_result(report: ResultReport):
         with get_db_cursor() as cursor:
             cursor.execute("SELECT status, site_id, dest_id, distance_m, ip FROM tasks_log WHERE id = %s", (actual_task_id,))
             task_row = cursor.fetchone()
-            if not task_row or task_row['status'] not in ['WORKING', 'RUNNING']: return {"status": "REPORTED"}
+            if not task_row or task_row['status'] not in ['WORKING', 'RUNNING', 'SUCCESS', 'FAIL']: return {"status": "REPORTED"}
             
             client_dist = int(report.drive_dist) if report.drive_dist and str(report.drive_dist).isdigit() else 0
             client_time = int(report.drive_time) if report.drive_time and str(report.drive_time).isdigit() else 0
@@ -474,18 +630,20 @@ async def report_result(report: ResultReport):
             cursor.execute("UPDATE tasks_log SET status = %s, result_msg = %s, end_time = %s, client_dist_m = %s, client_time_s = %s, client_speed_kmh = %s WHERE id = %s", (report.status, report.message, kst_now, client_dist, client_time, client_speed, actual_task_id))
             
             if report.status == 'SUCCESS':
-                update_device_stats(cursor, report.device_id, success=1)
-                cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
-                cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) VALUES (%s, %s, %s, 1, 0, 0, %s, %s) ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), fail_cnt=0, alloc_fail_cnt=0, last_dist_m=VALUES(last_dist_m)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['distance_m'], kst_now))
-                
-                # Sync back to Legacy Server
-                sync_legacy_task_end(task_row['site_id'], report.device_id, task_row['dest_id'], 'SUCCESS', kst_now, client_dist, client_time, report.message)
+                if task_row['status'] != 'SUCCESS':
+                    update_device_stats(cursor, report.device_id, success=1)
+                    cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
+                    cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) VALUES (%s, %s, %s, 1, 0, 0, %s, %s) ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), fail_cnt=0, alloc_fail_cnt=0, last_dist_m=VALUES(last_dist_m)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['distance_m'], kst_now))
+                    
+                    # Sync back to Legacy Server
+                    sync_legacy_task_end(actual_task_id, task_row['site_id'], report.device_id, task_row['dest_id'], 'SUCCESS', kst_now, client_dist, client_time, report.message)
             else:
-                update_device_stats(cursor, report.device_id, fail=1)
-                cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_fail_at) VALUES (%s, %s, %s, 0, 1, 0, %s, %s) ON DUPLICATE KEY UPDATE fail_cnt=fail_cnt+1, last_fail_at=VALUES(last_fail_at)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['distance_m'], kst_now))
-                
-                # Sync back to Legacy Server
-                sync_legacy_task_end(task_row['site_id'], report.device_id, task_row['dest_id'], report.status, kst_now, client_dist, client_time, report.message)
+                if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
+                    update_device_stats(cursor, report.device_id, fail=1)
+                    cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_fail_at) VALUES (%s, %s, %s, 0, 1, 0, %s, %s) ON DUPLICATE KEY UPDATE fail_cnt=fail_cnt+1, last_fail_at=VALUES(last_fail_at)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['distance_m'], kst_now))
+                    
+                    # Sync back to Legacy Server
+                    sync_legacy_task_end(actual_task_id, task_row['site_id'], report.device_id, task_row['dest_id'], report.status, kst_now, client_dist, client_time, report.message)
             return {"status": "REPORTED"}
     except Exception as e: print(f"ERROR: {e}"); raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -507,6 +665,10 @@ async def update_status(data: StatusUpdate):
         with get_db_cursor() as cursor:
             d_time = safe_int(data.drive_time)
             d_dist = safe_int(data.drive_dist)
+            
+            cursor.execute("SELECT status, site_id, dest_id, distance_m, ip FROM tasks_log WHERE id = %s", (actual_task_id,))
+            task_row = cursor.fetchone()
+            
             if data.device_id:
                 update_device_stats(cursor, data.device_id, duration=d_time if d_time else 0)
                 if data.real_ip and data.real_ip != "Unknown": 
@@ -526,30 +688,30 @@ async def update_status(data: StatusUpdate):
             
             # Sync ALL status updates to legacy (IP_CHANGED, DRIVING, etc)
             if data.device_id and data.status not in ['SUCCESS', 'FAIL'] and not data.status.startswith('FAIL'):
-                sync_legacy_task_status_update(data.device_id, data.status, kst_now, ip=data.real_ip, client_dist=d_dist or 0, client_time=d_time or 0)
+                sync_legacy_task_status_update(actual_task_id, data.device_id, data.status, kst_now, ip=data.real_ip, client_dist=d_dist or 0, client_time=d_time or 0)
                 
             if data.status in ['SUCCESS', 'FAIL'] or data.status.startswith('FAIL'):
-                cursor.execute("SELECT site_id, dest_id, distance_m, ip FROM tasks_log WHERE id = %s", (actual_task_id,))
-                row = cursor.fetchone()
-                if row:
+                if task_row:
                     msg_for_legacy = data.error_msg if data.error_msg else data.status
                     if data.status == 'SUCCESS': 
-                        if data.device_id:
-                            update_device_stats(cursor, data.device_id, success=1)
-                        cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (row['ip'], row['dest_id'], kst_now))
-                        cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) VALUES (%s, %s, %s, 1, 0, 0, %s, %s) ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), fail_cnt=0, alloc_fail_cnt=0, last_dist_m=VALUES(last_dist_m)", (kst_date, row['site_id'], row['dest_id'], row['distance_m'], kst_now))
-                        
-                        # Sync back to Legacy Server
-                        if data.device_id:
-                            sync_legacy_task_end(row['site_id'], data.device_id, row['dest_id'], 'SUCCESS', kst_now, d_dist or 0, d_time or 0, msg_for_legacy)
+                        if task_row['status'] != 'SUCCESS':
+                            if data.device_id:
+                                update_device_stats(cursor, data.device_id, success=1)
+                            cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
+                            cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) VALUES (%s, %s, %s, 1, 0, 0, %s, %s) ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), fail_cnt=0, alloc_fail_cnt=0, last_dist_m=VALUES(last_dist_m)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['distance_m'], kst_now))
+                            
+                            # Sync back to Legacy Server
+                            if data.device_id:
+                                sync_legacy_task_end(actual_task_id, task_row['site_id'], data.device_id, task_row['dest_id'], 'SUCCESS', kst_now, d_dist or 0, d_time or 0, msg_for_legacy)
                     else: 
-                        if data.device_id:
-                            update_device_stats(cursor, data.device_id, fail=1)
-                        cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_fail_at) VALUES (%s, %s, %s, 0, 1, 0, %s, %s) ON DUPLICATE KEY UPDATE fail_cnt=fail_cnt+1, last_fail_at=VALUES(last_fail_at)", (kst_date, row['site_id'], row['dest_id'], row['distance_m'], kst_now))
-                        
-                        # Sync back to Legacy Server
-                        if data.device_id:
-                            sync_legacy_task_end(row['site_id'], data.device_id, row['dest_id'], data.status, kst_now, d_dist or 0, d_time or 0, msg_for_legacy)
+                        if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
+                            if data.device_id:
+                                update_device_stats(cursor, data.device_id, fail=1)
+                            cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_fail_at) VALUES (%s, %s, %s, 0, 1, 0, %s, %s) ON DUPLICATE KEY UPDATE fail_cnt=fail_cnt+1, last_fail_at=VALUES(last_fail_at)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['distance_m'], kst_now))
+                            
+                            # Sync back to Legacy Server
+                            if data.device_id:
+                                sync_legacy_task_end(actual_task_id, task_row['site_id'], data.device_id, task_row['dest_id'], data.status, kst_now, d_dist or 0, d_time or 0, msg_for_legacy)
         return {"status": "UPDATED"}
     except Exception as e: print(f"Error: {e}"); raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -571,6 +733,10 @@ async def report_lte_usage(report: LteUsageReport):
                     INSERT INTO lte_data_usage (modem_name, work_date, init_upload, init_download, now_upload, now_download) 
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (report.name, kst_date, report.upload, report.download, report.upload, report.download))
+        
+        # Replicate LTE Usage to Legacy
+        sync_legacy_lte_usage(report.name, report.upload, report.download)
+        
         return {"status": "ok"}
     except Exception as e: 
         print(f"LTE Usage Error: {e}")
