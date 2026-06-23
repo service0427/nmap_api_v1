@@ -5,6 +5,8 @@ import os
 import sys
 import argparse
 import re
+import hashlib
+from datetime import datetime, timezone, timedelta
 
 # Adjust path for importing project core modules if run standalone
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -18,6 +20,11 @@ try:
     HAS_CORE = True
 except ImportError:
     HAS_CORE = False
+
+def get_today_kst():
+    if HAS_CORE:
+        return get_kst_date().isoformat()
+    return datetime.now(timezone(timedelta(hours=9))).date().isoformat()
 
 def extract_place_id(url):
     """
@@ -50,19 +57,6 @@ def run_crawler(min_id=None, debug=False, sync=False):
             print(*args, **kwargs)
             
     last_id_file = os.path.join(script_dir, "last_id.txt")
-    
-    # 0. Load min_id from last_id.txt if not provided
-    if min_id is None:
-        if os.path.exists(last_id_file):
-            try:
-                with open(last_id_file, "r") as f:
-                    content = f.read().strip()
-                    if content:
-                        min_id = int(content)
-                        dprint(f"   - 자동으로 이전 최종 ID({min_id})를 불러와 필터링을 적용합니다.")
-            except ValueError:
-                pass
-
     start_id = min_id if min_id is not None else 0
     session = requests.Session()
     
@@ -95,7 +89,7 @@ def run_crawler(min_id=None, debug=False, sync=False):
         print(f"로그인 중 오류 발생: {e}")
         return
 
-    # 2. Fetch slot lists
+    # 2. Fetch all slots using length: -1
     data_url = "http://rudolph-slot.club/accounts/slots/all"
     data_headers = {
         "accept": "application/json, text/javascript, */*; q=0.01",
@@ -105,7 +99,7 @@ def run_crawler(min_id=None, debug=False, sync=False):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # Send full columns definition to enable returning 500 items per request
+    # Send full columns definition
     data_payload = {
         "draw": 1,
         "columns": [
@@ -162,85 +156,82 @@ def run_crawler(min_id=None, debug=False, sync=False):
         print(f"데이터 조회 중 오류 발생: {e}")
         return
 
-    # 3. Filter items and find max ID
+    # Filter active slots for today
+    today_str = get_today_kst()
+    dprint(f"   - 필터링 기준 날짜 (오늘 KST): {today_str}")
+
+    active_items = []
     max_id_val = None
-    if all_data:
-        try:
-            max_id_val = max(int(item.get("id", 0)) for item in all_data if item.get("id") is not None)
-        except ValueError:
-            pass
-
-    filtered_raw_data = []
+    
     for item in all_data:
-        if isinstance(item, dict):
-            url = item.get("url")
-            if not url or str(url).strip().lower() in ["none", "null", ""]:
-                continue
-                
-            item_id = item.get("id")
-            if min_id is not None:
-                try:
-                    if item_id is not None and int(item_id) <= min_id:
-                        continue
-                except ValueError:
-                    pass
-            filtered_raw_data.append(item)
-
-    # 4. Group by start_date, end_date, and parsed place_id
-    grouped = {}
-    for item in filtered_raw_data:
-        start_date = str(item.get("start_date", ""))
-        end_date = str(item.get("end_date", ""))
-        url = str(item.get("url", ""))
-        place_id = extract_place_id(url)
-        if not place_id:
-            dprint(f"   [Warning] URL 파싱 실패: {url}")
+        if not isinstance(item, dict):
             continue
             
-        key = (start_date, end_date, place_id)
-        
-        try:
-            curr_id = int(item.get("id", 0))
-        except (ValueError, TypeError):
-            curr_id = 0
+        item_id = item.get("id")
+        if item_id is None:
+            continue
             
-        if key not in grouped:
-            grouped[key] = {
-                "max_id": curr_id,
+        # Optional min_id filtering if passed
+        if min_id is not None and int(item_id) <= min_id:
+            continue
+            
+        url = str(item.get("url") or "").strip()
+        code = extract_place_id(url)
+        if not code:
+            continue
+            
+        start_date = item.get("start_date")
+        end_date = item.get("end_date")
+        
+        # Check if today is included in start_date ~ end_date
+        if start_date and end_date and start_date <= today_str <= end_date:
+            slot_id_num = int(item_id)
+            active_items.append({
+                "slot_id": slot_id_num,
+                "sid": slot_id_num,
+                "user_sid": slot_id_num,
+                "dist_sid": slot_id_num,
+                "code": code,
+                "keyword": item.get("keyword") or "",
                 "start_date": start_date,
-                "end_date": end_date,
-                "place_id": place_id,
-                "url": url,
-                "slot_count": 1
-            }
-        else:
-            grouped[key]["slot_count"] += 1
-            grouped[key]["max_id"] = max(grouped[key]["max_id"], curr_id)
+                "expiry_date": end_date
+            })
+            if max_id_val is None or slot_id_num > max_id_val:
+                max_id_val = slot_id_num
 
-    sorted_groups = sorted(grouped.values(), key=lambda x: x["max_id"], reverse=True)
+    # Sort items by slot_id DESC
+    active_items.sort(key=lambda x: x["slot_id"], reverse=True)
 
-    # 5. Generate TSV including parsed place_id
-    tsv_lines = ["start_date\tend_date\tplace_id\turl\tcount"]
-    for g in sorted_groups:
-        total_count = g["slot_count"] * 5
-        tsv_lines.append(f"{g['start_date']}\t{g['end_date']}\t{g['place_id']}\t{g['url']}\t{total_count}")
-    tsv_content = "\n".join(tsv_lines)
-    
-    # 6. Save log file
+    # Compute hash of the items
+    items_json = json.dumps(active_items, ensure_ascii=False)
+    md5_hash = hashlib.md5(items_json.encode('utf-8')).hexdigest()
+
+    output_data = {
+        "total": len(active_items),
+        "page": 1,
+        "limit": len(active_items),
+        "items": active_items,
+        "hash": md5_hash
+    }
+
+    # Generate JSON string
+    json_output = json.dumps(output_data, indent=2, ensure_ascii=False)
+
+    # Save log file as JSON
     log_dir = os.path.join(script_dir, "logs")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
         
     date_time_str = time.strftime("%m-%d_%H%M%S")
     end_id = max_id_val if max_id_val is not None else start_id
-    output_file = os.path.join(log_dir, f"{date_time_str}_{start_id}-{end_id}.tsv")
+    output_file = os.path.join(log_dir, f"{date_time_str}_{start_id}-{end_id}.json")
     with open(output_file, "w", encoding="utf-8") as f:
-        f.write(tsv_content)
+        f.write(json_output)
         
     dprint(f"   - 최종 결과를 파일에 저장 완료: {output_file}\n")
-    print(tsv_content)
+    print(json_output)
     
-    # 7. Update last_id.txt
+    # Update last_id.txt
     if max_id_val is not None:
         try:
             with open(last_id_file, "w") as f:
@@ -249,63 +240,38 @@ def run_crawler(min_id=None, debug=False, sync=False):
         except Exception as e:
             dprint(f"   - 최종 ID 기록 실패: {e}")
             
-        print(f"\n최종 ID: {max_id_val}")
+        dprint(f"\n최종 ID: {max_id_val}")
 
     # 8. Sync directly to DB if requested and core is loaded
-    if sync:
-        if not HAS_CORE:
-            print("오류: DB 동기화를 위한 core 모듈을 불러올 수 없습니다. 경로 설정을 확인하세요.")
-            return
-            
-        print("\nDB 동기화를 시작합니다...")
+    if sync and HAS_CORE:
+        dprint("\nDB 동기화를 시작합니다...")
         db_config = Config.get_db_config()
         import pymysql
         conn = pymysql.connect(**db_config, autocommit=False)
         try:
             kst_now = get_kst_now()
-            # We want to sync for the target dates that Rudolph slots represent
-            # Usually we sync for "today KST"
-            target_date_str = get_kst_date().isoformat()
-            
-            # Filter slots active for today KST
-            active_slots = []
-            for item in all_data:
-                url = str(item.get("url") or "").strip()
-                p_id = extract_place_id(url)
-                if not p_id:
-                    continue
-                start_date = item.get("start_date")
-                end_date = item.get("end_date")
-                if start_date and end_date and start_date <= target_date_str <= end_date:
-                    active_slots.append(item)
-            
-            print(f"  [DB Sync] 오늘({target_date_str}) 활성인 슬롯 {len(active_slots)}개 확인.")
-            
             with conn.cursor() as cursor:
                 # Clear existing Rudolph records for today
                 cursor.execute("""
                     DELETE FROM raw_slots_tmp 
                     WHERE site = 'RUDOLPH' AND work_date = %s
-                """, (target_date_str,))
-                dprint(f"  [DB Sync] 기존 {cursor.rowcount}개 데이터 삭제 완료.")
+                """, (today_str,))
                 
                 # Insert individual slots (with their unique Rudolph slot id as sid)
                 inserted_cnt = 0
-                for item in active_slots:
-                    sid = str(item.get("id"))
-                    url = str(item.get("url"))
-                    dest_id = extract_place_id(url)
-                    # each slot represents 5 work count
-                    work_count = 5
+                for item in active_items:
+                    sid = str(item["sid"])
+                    dest_id = item["code"]
+                    work_count = 5 # Rudolph slot work_amount is 5
                     
                     cursor.execute("""
                         INSERT INTO raw_slots_tmp (site, sid, dest_id, work_count, work_date, created_at)
                         VALUES ('RUDOLPH', %s, %s, %s, %s, %s)
-                    """, (sid, dest_id, work_count, target_date_str, kst_now))
+                    """, (sid, dest_id, work_count, today_str, kst_now))
                     inserted_cnt += 1
                 
                 conn.commit()
-                print(f"  [DB Sync] 성공적으로 {inserted_cnt}개 슬롯을 raw_slots_tmp에 동기화 완료.")
+                dprint(f"  [DB Sync] 성공적으로 {inserted_cnt}개 슬롯을 raw_slots_tmp에 동기화 완료.")
         except Exception as e:
             conn.rollback()
             print(f"DB 동기화 중 오류 발생: {e}")
