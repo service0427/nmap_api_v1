@@ -40,27 +40,18 @@ async def get_admin_summary():
                     WHERE rs.status = 'on'
                       {is_deleted_filter1}
                       AND %s BETWEEN rs.start_date AND rs.end_date
-                    UNION ALL
-                    SELECT 
-                        rst.site as site_id,
-                        rst.work_count as target,
-                        IFNULL(dp.success_cnt, 0) as success,
-                        IFNULL(dp.fail_cnt, 0) as fail
-                    FROM raw_slots_tmp rst
-                    LEFT JOIN daily_progress dp ON rst.site = dp.site_id AND rst.dest_id = dp.dest_id AND dp.work_date = %s
-                    WHERE rst.work_date = %s AND rst.dest_id IS NOT NULL AND rst.dest_id != ''
                 ) t
                 GROUP BY site_id
-            """, (kst_date, kst_date, kst_date, kst_date))
+            """, (kst_date, kst_date))
             rows = cursor.fetchall()
             
-            stats_by_site = {row['site_id']: row for row in rows}
+            stats_by_site = {str(row['site_id']).upper(): row for row in rows}
             fsd = stats_by_site.get('FSD', {'target': 0, 'success': 0, 'fail': 0})
             luf = stats_by_site.get('LUF', {'target': 0, 'success': 0, 'fail': 0})
-            ssolup = stats_by_site.get('ssolup', {'target': 0, 'success': 0, 'fail': 0})
-            ghost2026 = stats_by_site.get('ghost2026', {'target': 0, 'success': 0, 'fail': 0})
+            ssolup = stats_by_site.get('SSOLUP', {'target': 0, 'success': 0, 'fail': 0})
+            ghost2026 = stats_by_site.get('GHOST2026', {'target': 0, 'success': 0, 'fail': 0})
             rudolph = stats_by_site.get('RUDOLPH', {'target': 0, 'success': 0, 'fail': 0})
-            test = stats_by_site.get('test', {'target': 0, 'success': 0, 'fail': 0})
+            test = stats_by_site.get('TEST', {'target': 0, 'success': 0, 'fail': 0})
             
             fsd_target = fsd['target'] or 0
             fsd_success = fsd['success'] or 0
@@ -86,6 +77,11 @@ async def get_admin_summary():
             test_success = test['success'] or 0
             test_fail = test['fail'] or 0
             
+            # 통합 작업 요약 시 FSD와 TEST는 비활성화/제외 처리 (GHOST, SSOLUP, RUDOLPH, LUF만 포함)
+            total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target
+            total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success
+            total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail
+
             summary_stats = {
                 "fsd_target": fsd_target,
                 "fsd_success": fsd_success,
@@ -105,10 +101,10 @@ async def get_admin_summary():
                 "test_target": test_target,
                 "test_success": test_success,
                 "test_fail": test_fail,
-                "total_target": fsd_target + luf_target + test_target + ssolup_target + ghost_target + rudolph_target,
-                "success": fsd_success + luf_success + test_success + ssolup_success + ghost_success + rudolph_success,
-                "fail": fsd_fail + luf_fail + test_fail + ssolup_fail + ghost_fail + rudolph_fail,
-                "remain": max(0, (fsd_target + luf_target + test_target + ssolup_target + ghost_target + rudolph_target) - (fsd_success + luf_success + test_success + ssolup_success + ghost_success + rudolph_success))
+                "total_target": total_active_target,
+                "success": total_active_success,
+                "fail": total_active_fail,
+                "remain": max(0, total_active_target - total_active_success)
             }
             
             # 2. System Status
@@ -172,17 +168,10 @@ async def get_admin_summary():
                        rs_agg.slot_status
                 FROM (
                     SELECT dest_id, 
-                           SUM(target) as target,
-                           MAX(slot_status) as slot_status
-                    FROM (
-                        SELECT dest_id, work_count as target, status as slot_status
-                        FROM raw_slots
-                        WHERE %s BETWEEN start_date AND end_date AND site_id <> 'test' {is_deleted_where_expr} AND status = 'on'
-                        UNION ALL
-                        SELECT dest_id, work_count as target, 'on' as slot_status
-                        FROM raw_slots_tmp
-                        WHERE work_date = %s AND site <> 'test' AND dest_id IS NOT NULL AND dest_id != ''
-                    ) t_agg
+                           SUM(work_count) as target,
+                           MAX(status) as slot_status
+                    FROM raw_slots
+                    WHERE %s BETWEEN start_date AND end_date AND site_id <> 'test' {is_deleted_where_expr} AND status = 'on'
                     GROUP BY dest_id
                 ) rs_agg
                 JOIN places p ON rs_agg.dest_id = p.dest_id
@@ -193,7 +182,7 @@ async def get_admin_summary():
                     GROUP BY dest_id
                 ) dp ON p.dest_id = dp.dest_id
                 ORDER BY slot_status DESC, success DESC
-            """, (kst_date, kst_date, kst_date))
+            """, (kst_date, kst_date))
             dest_list = cursor.fetchall()
 
             # 5. Live Alarms (Smart Anomaly Detection)
