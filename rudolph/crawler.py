@@ -61,7 +61,7 @@ def run_crawler(min_id=None, debug=False, sync=False):
     session = requests.Session()
     
     # 1. Login to Rudolph-slot
-    login_url = "http://rudolph-slot.club/login"
+    login_url = "https://ieum.place/login"
     login_headers = {
         "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -90,12 +90,12 @@ def run_crawler(min_id=None, debug=False, sync=False):
         return
 
     # 2. Fetch all slots using length: -1
-    data_url = "http://rudolph-slot.club/accounts/slots/all"
+    data_url = "https://ieum.place/accounts/slots/all"
     data_headers = {
         "accept": "application/json, text/javascript, */*; q=0.01",
         "content-type": "application/json",
         "x-requested-with": "XMLHttpRequest",
-        "Referer": "http://rudolph-slot.club/slot_list",
+        "Referer": "https://ieum.place/slot_list",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
@@ -244,45 +244,31 @@ def run_crawler(min_id=None, debug=False, sync=False):
 
     # 8. Sync directly to DB if requested and core is loaded
     if sync and HAS_CORE:
-        dprint("\nDB 동기화를 시작합니다...")
-        db_config = Config.get_db_config()
-        import pymysql
-        conn = pymysql.connect(**db_config, autocommit=False)
+        dprint("\nDB 동기화를 시작합니다 (raw_slots)...")
+        standardized_data = []
+        for item in active_items:
+            standardized_data.append({
+                'sid': int(item['sid']),
+                'dest_id': str(item['code']).strip(),
+                'work_count': 10,
+                'start_date': item['start_date'],
+                'end_date': item['expiry_date'],
+                'search_keyword': item['keyword'],
+                'target_url': f"https://m.place.naver.com/place/{item['code']}"
+            })
+            
         try:
-            kst_now = get_kst_now()
-            with conn.cursor() as cursor:
-                # Clear existing Rudolph records for today
-                cursor.execute("""
-                    DELETE FROM raw_slots_tmp 
-                    WHERE site = 'RUDOLPH' AND work_date = %s
-                """, (today_str,))
-                
-                # Insert individual slots (with their unique Rudolph slot id as sid)
-                inserted_cnt = 0
-                for item in active_items:
-                    sid = str(item["sid"])
-                    dest_id = item["code"]
-                    work_count = 10 # Rudolph slot work_amount is 10
-                    
-                    cursor.execute("""
-                        INSERT INTO raw_slots_tmp (site, sid, dest_id, work_count, work_date, created_at)
-                        VALUES ('RUDOLPH', %s, %s, %s, %s, %s)
-                    """, (sid, dest_id, work_count, today_str, kst_now))
-                    inserted_cnt += 1
-                
-                conn.commit()
-                dprint(f"  [DB Sync] 성공적으로 {inserted_cnt}개 슬롯을 raw_slots_tmp에 동기화 완료.")
+            from core.sync_engine import process_sync
+            process_sync('RUDOLPH', standardized_data)
+            dprint(f"  [DB Sync] 성공적으로 {len(standardized_data)}개 슬롯을 raw_slots에 동기화 완료.")
         except Exception as e:
-            conn.rollback()
             print(f"DB 동기화 중 오류 발생: {e}")
-        finally:
-            conn.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Rudolph Slot Crawler")
     parser.add_argument("min_id", type=int, nargs="?", default=None, help="Filter results to show only items with ID greater than this value (overrides last_id.txt)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logs")
-    parser.add_argument("--sync", action="store_true", help="Sync fetched data directly to raw_slots_tmp database")
+    parser.add_argument("--sync", action="store_true", help="Sync fetched data directly to raw_slots database")
     args = parser.parse_args()
     
     run_crawler(min_id=args.min_id, debug=args.debug, sync=args.sync)

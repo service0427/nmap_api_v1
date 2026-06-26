@@ -78,8 +78,43 @@ class NaverPlaceScraper:
 
     def fetch_place_info(self, place_id):
         """
-        고유 알고리즘: POI 기본정보 -> 1차 상호검색 -> (실패시) 주소 GPS 고정 -> 2차 정밀검색
+        고유 알고리즘:
+        1. Place Summary API 우선 조회 -> 고유 ID 기준으로 좌표/상호명/주소 직접 추출 (매우 정확하고 빠름)
+        2. 실패 시 백업: directionsPOI -> 1차 상호검색 -> (실패시) 주소 GPS 고정 -> 2차 정밀검색
         """
+        summary_url = f"https://map.naver.com/p/api/place/summary/{place_id}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+            "Referer": "https://map.naver.com/"
+        }
+        try:
+            res_sum = requests.get(summary_url, headers=headers, timeout=10)
+            if res_sum.status_code == 200:
+                data = res_sum.json().get("data")
+                if data:
+                    pd = data.get("placeDetail")
+                    if pd:
+                        name = pd.get("name")
+                        coord = pd.get("coordinate") or {}
+                        lat = coord.get("latitude")
+                        lng = coord.get("longitude")
+                        addr_info = pd.get("address") or {}
+                        
+                        if name and lat and lng:
+                            final_addr = addr_info.get("roadAddress") or addr_info.get("address") or ""
+                            orig_addr = addr_info.get("address") or addr_info.get("roadAddress") or ""
+                            return {
+                                "id": place_id,
+                                "name": name,
+                                "address": final_addr,
+                                "original_address": orig_addr,
+                                "lng": float(lng),
+                                "lat": float(lat)
+                            }
+        except Exception as e:
+            print(f"[NaverPlaceScraper] Summary API Exception: {e}")
+
+        # 백업 레거시 로직
         poi_url = f"https://map.naver.com/p/api/place/directionsPOI/{place_id}"
         poi_headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://map.naver.com/"}
         
@@ -123,7 +158,8 @@ class NaverPlaceScraper:
                 return {
                     "id": match.get("id"),
                     "name": match.get("title"),
-                    "address": final_addr, # 이것이 shortAddress 기반 주소
+                    "address": final_addr,
+                    "original_address": addr,
                     "lng": float(match.get("x") or 0),
                     "lat": float(match.get("y") or 0)
                 }

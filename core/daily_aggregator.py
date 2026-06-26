@@ -33,12 +33,13 @@ def aggregate_daily_quota():
                 # Logic: Insert new record, or update if exists.
                 # If inserting new: Try to fetch the most recent last_dist_m for this place.
                 sql = """
-                    INSERT INTO daily_progress (work_date, site_id, dest_id, total_target, success_cnt, fail_cnt, last_dist_m, updated_at)
+                    INSERT INTO daily_progress (work_date, site_id, dest_id, sid, total_target, success_cnt, fail_cnt, last_dist_m, updated_at)
                     SELECT 
                         %s, 
                         s.site_id, 
                         s.dest_id, 
-                        SUM(s.work_count),
+                        s.sid,
+                        s.work_count,
                         0, 0,
                         IFNULL(
                             (SELECT dp2.last_dist_m FROM daily_progress dp2 
@@ -53,7 +54,6 @@ def aggregate_daily_quota():
                     WHERE s.status = 'on'
                       AND s.is_deleted = 0
                       AND %s BETWEEN s.start_date AND s.end_date
-                    GROUP BY s.site_id, s.dest_id
                     ON DUPLICATE KEY UPDATE 
                         total_target = VALUES(total_target),
                         updated_at = %s;
@@ -61,35 +61,6 @@ def aggregate_daily_quota():
                 # Parameters: target_date (for work_date), target_date (for subquery limit), kst_now (updated_at), target_date (for raw_slots filter), kst_now (on duplicate update)
                 cursor.execute(sql, (d_str, d_str, kst_now, d_str, kst_now))
                 print(f"  [{d_str}] Slots verified: {cursor.rowcount}")
-                
-                # Aggregate from raw_slots_tmp for ssolup and ghost2026
-                tmp_sql = """
-                    INSERT INTO daily_progress (work_date, site_id, dest_id, total_target, success_cnt, fail_cnt, last_dist_m, updated_at)
-                    SELECT 
-                        %s, 
-                        s.site, 
-                        s.dest_id, 
-                        SUM(s.work_count),
-                        0, 0,
-                        IFNULL(
-                            (SELECT dp2.last_dist_m FROM daily_progress dp2 
-                             WHERE dp2.dest_id = s.dest_id 
-                               AND dp2.work_date < %s 
-                               AND dp2.success_cnt > 0
-                             ORDER BY dp2.work_date DESC LIMIT 1), 
-                            800
-                        ),
-                        %s
-                    FROM raw_slots_tmp s
-                    WHERE s.work_date = %s
-                      AND s.dest_id IS NOT NULL AND s.dest_id != ''
-                    GROUP BY s.site, s.dest_id
-                    ON DUPLICATE KEY UPDATE 
-                        total_target = VALUES(total_target),
-                        updated_at = %s;
-                """
-                cursor.execute(tmp_sql, (d_str, d_str, kst_now, d_str, kst_now))
-                print(f"  [{d_str}] Tmp slots verified: {cursor.rowcount}")
             
         conn.commit()
     except Exception as e:
@@ -144,23 +115,15 @@ def calculate_7day_stats():
                 t_str = target_date.isoformat()
                 
                 # 해당 미래 날짜 기준 유효 슬롯들의 목표량 합산
-                future_sql = """
-                    SELECT (
-                        SELECT IFNULL(SUM(s.work_count), 0)
-                        FROM raw_slots s
-                        WHERE s.status = 'on'
-                          AND s.is_deleted = 0
-                          AND %s BETWEEN s.start_date AND s.end_date
-                    ) + (
-                        SELECT IFNULL(SUM(st.work_count), 0)
-                        FROM raw_slots_tmp st
-                        WHERE st.work_date = %s
-                          AND st.dest_id IS NOT NULL AND st.dest_id != ''
-                    ) as total
-                """
-                cursor.execute(future_sql, (t_str, t_str))
-                target_sum = cursor.fetchone()['total'] or 0
-                
+                cursor.execute("""
+                    SELECT SUM(work_count) as t_sum 
+                    FROM raw_slots 
+                    WHERE status = 'on' AND is_deleted = 0 
+                      AND %s BETWEEN start_date AND end_date
+                """, (t_str,))
+                row = cursor.fetchone()
+                target_sum = row['t_sum'] or 0
+
                 # 오늘인 경우(D-0), 당일 실시간 성공/실패 수치도 함께 반영해 업서트
                 if i == 0:
                     # places 상태별 카운트 집계

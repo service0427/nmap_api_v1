@@ -14,7 +14,7 @@ sys.path.append(PROJECT_DIR)
 
 from core.config import Config
 from core.scraper import NaverPlaceScraper
-from core.utils import get_kst_now
+from core.utils import get_kst_now, get_kst_date
 
 # 공통 설정 및 인스턴스
 HASH_DIR = os.path.join(PROJECT_DIR, "data/hashes")
@@ -53,10 +53,12 @@ def ensure_place_info(cursor, dest_id, source_places_cache=None, force_update=Fa
     # 강제 업데이트가 아닐 때만 소스 캐시 활용 (원본 FSD 정보)
     if source_places_cache and dest_id in source_places_cache:
         sp = source_places_cache[dest_id]
+        name = sp['name'] or ''
+        is_opt = 1 if re.search(r'누수|청소|하수구|변기|이사|싱크대|뚫음', name) else 0
         cursor.execute("""
-            INSERT IGNORE INTO places (dest_id, name, address, lat, lng, check_status)
-            VALUES (%s, %s, %s, %s, %s, 'VERIFIED')
-        """, (sp['dest_id'], sp['name'], sp['address'], sp['lat'], sp['lng']))
+            INSERT IGNORE INTO places (dest_id, name, address, lat, lng, check_status, is_optimizer)
+            VALUES (%s, %s, %s, %s, %s, 'VERIFIED', %s)
+        """, (sp['dest_id'], name, sp['address'], sp['lat'], sp['lng'], is_opt))
         return True
 
     # 캐시가 없는 순수 신규 dest_id는 'PENDING'으로 신속 등록하여 비동기 후처리기가 긁어가도록 위임
@@ -113,12 +115,19 @@ def process_sync(site_id, standardized_data, source_places_cache=None, dry_run=F
                 sid = item['sid']
                 new_sid_list.add(sid)
                 
-                # 실패가 2회 이상이면 정보가 틀렸을 가능성이 있으므로 강제 재수집 시도
-                fail_cnt = item.get('fail_count', 0)
-                is_high_failure = True if fail_cnt >= 2 else False
+                # 로컬 daily_progress의 fail_cnt 또는 alloc_fail_cnt를 합산하여 실패 여부 확인
+                cursor.execute("""
+                    SELECT IFNULL(fail_cnt, 0) + IFNULL(alloc_fail_cnt, 0) as total_fail 
+                    FROM daily_progress 
+                    WHERE work_date = %s AND site_id = %s AND dest_id = %s
+                """, (get_kst_date(), site_id, item['dest_id']))
+                dp_row = cursor.fetchone()
+                local_fail_cnt = dp_row['total_fail'] if dp_row else 0
+
+                is_high_failure = True if local_fail_cnt >= 2 else False
                 ensure_place_info(cursor, item['dest_id'], source_places_cache, force_update=is_high_failure)
                 
-                if fail_cnt >= 2:
+                if local_fail_cnt >= 2:
                     cursor.execute("""
                         UPDATE places 
                         SET is_optimizer = 1 
@@ -128,10 +137,10 @@ def process_sync(site_id, standardized_data, source_places_cache=None, dry_run=F
                 
                 if 'success_count' in item:
                     cursor.execute("""
-                        INSERT INTO daily_progress (work_date, site_id, dest_id, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m)
-                        VALUES (%s, %s, %s, %s, 0, 0, 800)
+                        INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m)
+                        VALUES (%s, %s, %s, %s, %s, 0, 0, 800)
                         ON DUPLICATE KEY UPDATE success_cnt = GREATEST(success_cnt, %s)
-                    """, (get_kst_date(), site_id, item['dest_id'], item['success_count'], item['success_count']))
+                    """, (get_kst_date(), site_id, item['dest_id'], item['sid'], item['success_count'], item['success_count']))
                 
                 # 1일 1회성 등 검색어(search_keyword) 유입 누락 시 places.name으로 자동 보완
                 search_keyword = item.get('search_keyword') or ''
@@ -206,7 +215,7 @@ def process_sync(site_id, standardized_data, source_places_cache=None, dry_run=F
     finally:
         conn.close()
 
-def run_all_syncs(dry_run=False):
+def run_all_syncs(dry_run=False, force=False):
     source_places_cache = fetch_source_destinations_cache()
     modules_dir = os.path.join(os.path.dirname(__file__), "sync_modules")
     if not os.path.exists(modules_dir): return
@@ -216,12 +225,19 @@ def run_all_syncs(dry_run=False):
             try:
                 module = importlib.import_module(f"core.sync_modules.{module_name}")
                 if hasattr(module, "fetch_data"):
+                    # Hourly restriction for external sites (only run at XX:05, excluding 01:00-09:59 KST)
+                    is_external = (module_name.lower() in ('ssolup', 'ghost2026', 'luf', 'rudolph'))
+                    if is_external and not force and not dry_run:
+                        kst_now = get_kst_now()
+                        if kst_now.minute != 5 or (1 <= kst_now.hour <= 9):
+                            continue
+                            
                     # 1일 1회성 모듈 체크 제어
                     is_daily = getattr(module, "IS_DAILY_ONLY", False)
                     success_file = os.path.join(HASH_DIR, f"{module_name.lower()}_last_success.txt")
                     today_str = get_kst_now().strftime("%Y-%m-%d")
                     
-                    if is_daily and os.path.exists(success_file):
+                    if is_daily and not force and os.path.exists(success_file):
                         with open(success_file, "r") as sf:
                             last_date = sf.read().strip()
                         if last_date == today_str:
@@ -243,5 +259,6 @@ def run_all_syncs(dry_run=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nmap API Sync Engine")
     parser.add_argument("--dry-run", action="store_true", help="Print collected data without updating database")
+    parser.add_argument("--force", action="store_true", help="Force sync bypassing time/cron restrictions")
     args = parser.parse_args()
-    run_all_syncs(dry_run=args.dry_run)
+    run_all_syncs(dry_run=args.dry_run, force=args.force)

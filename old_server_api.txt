@@ -1,0 +1,316 @@
+from flask import Flask, request, jsonify
+import mysql.connector
+import datetime
+import os
+import uuid
+import secrets
+import hashlib
+import json
+
+app = Flask(__name__)
+
+# MariaDB Config
+DB_CONFIG = {
+    'host': 'localhost',
+    'user': 'nmap',
+    'password': 'Tech1324',
+    'database': 'nmap'
+}
+
+def get_db_connection():
+    return mysql.connector.connect(**DB_CONFIG)
+
+def init_db():
+    """V3.0: Summary-style daily_tasks and robust allocation schema"""
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        
+        # 1. task_log Table (Detailed History)
+        cursor.execute("SHOW TABLES LIKE 'task_log'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE task_log (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    device_id VARCHAR(50),
+                    dest_id VARCHAR(20),
+                    dest_name VARCHAR(255),
+                    ip VARCHAR(45),
+                    spoofed_identity TEXT,
+                    distance_m INT DEFAULT 0,
+                    duration_sec INT DEFAULT 0,
+                    start_time DATETIME,
+                    end_time DATETIME,
+                    status VARCHAR(255)
+                )
+            """)
+
+        # 2. devices Table
+        cursor.execute("SHOW TABLES LIKE 'devices'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE devices (
+                    seq SMALLINT AUTO_INCREMENT PRIMARY KEY,
+                    device_id VARCHAR(50) UNIQUE,
+                    current_ip VARCHAR(45),
+                    ip_updated_at DATETIME,
+                    orig_ssaid VARCHAR(50),
+                    orig_adid VARCHAR(50),
+                    orig_idfv VARCHAR(50),
+                    orig_ni VARCHAR(50),
+                    orig_token VARCHAR(50)
+                )
+            """)
+
+        # 3. destinations Table
+        cursor.execute("SHOW TABLES LIKE 'destinations'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE destinations (
+                    dest_id VARCHAR(20) PRIMARY KEY,
+                    name VARCHAR(255),
+                    address VARCHAR(255),
+                    lat DOUBLE,
+                    lng DOUBLE,
+                    min_arrival INT DEFAULT 6,
+                    max_arrival INT DEFAULT 10,
+                    daily_limit INT DEFAULT 5,
+                    status VARCHAR(10) DEFAULT 'on',
+                    service_type VARCHAR(20) DEFAULT 'prod',
+                    start_date DATE DEFAULT '2026-01-01',
+                    expiry_date DATE DEFAULT '2030-12-31',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            # Check for missing columns in existing table
+            cursor.execute("SHOW COLUMNS FROM destinations")
+            existing_cols = [c[0] for c in cursor.fetchall()]
+            if 'start_date' not in existing_cols:
+                cursor.execute("ALTER TABLE destinations ADD COLUMN start_date DATE DEFAULT '2026-01-01'")
+            if 'expiry_date' not in existing_cols:
+                cursor.execute("ALTER TABLE destinations ADD COLUMN expiry_date DATE DEFAULT '2030-12-31'")
+
+        # 4. daily_tasks Table (Summary Style - Recreated for simplicity)
+        # Drop old structure if it has 'status' or other obsolete columns
+        cursor.execute("SHOW COLUMNS FROM daily_tasks")
+        dt_cols = [c[0] for c in cursor.fetchall()]
+        if "status" in dt_cols or "actual_dist" in dt_cols:
+            print("[*] Recreating daily_tasks to Summary Style...")
+            cursor.execute("DROP TABLE daily_tasks")
+            dt_cols = [] # Reset to trigger recreation
+            
+        if not dt_cols:
+            cursor.execute("""
+                CREATE TABLE daily_tasks (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    dest_id VARCHAR(20),
+                    work_date DATE,
+                    success_count INT DEFAULT 0,
+                    fail_count INT DEFAULT 0,
+                    last_assigned_at DATETIME,
+                    last_success_at DATETIME,
+                    UNIQUE KEY (dest_id, work_date)
+                )
+            """)
+
+        # 5. fail_log Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fail_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                log_id INT,
+                device_id VARCHAR(50),
+                dest_id VARCHAR(20),
+                fail_status VARCHAR(255),
+                requested_address VARCHAR(255),
+                actual_address VARCHAR(255),
+                error_msg TEXT,
+                log_path TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # 6. v_failed_destinations_7d View (V3.1 Failure Filter View)
+        cursor.execute("""
+            CREATE OR REPLACE VIEW v_failed_destinations_7d AS
+            SELECT dest_id
+            FROM daily_tasks
+            WHERE work_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            GROUP BY dest_id
+            HAVING SUM(fail_count) >= 2
+        """)
+
+        db.commit()
+        db.close()
+        print("[✓] V3.1 Database Schema & Views Initialized.")
+    except Exception as e:
+        print(f"[!] Database Init Error: {e}")
+
+init_db()
+
+def generate_spoofed_identity():
+    ssaid = secrets.token_hex(8)
+    adid = str(uuid.uuid4())
+    idfv = str(uuid.uuid4())
+    ni = hashlib.md5(ssaid.encode()).hexdigest()
+    token = ''.join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(16))
+    return {"ssaid": ssaid, "adid": adid, "idfv": idfv, "ni": ni, "token": token}
+
+@app.route('/api/v1/request', methods=['GET'])
+def request_task():
+    device_id = request.args.get('device_id')
+    try:
+        db = get_db_connection()
+        cursor = db.cursor(dictionary=True)
+        
+        # 1. Device check
+        cursor.execute("SELECT * FROM devices WHERE device_id = %s", (device_id,))
+        dev_info = cursor.fetchone()
+        if not dev_info:
+            db.close(); return jsonify({"status": "error", "message": "Unregistered device"}), 404
+        
+        frida_port = dev_info['seq'] + 30000
+
+        # 2. Allocation Query
+        # - 오늘 성공 횟수 < 일일 제한
+        # - 2회 실패 시 당일 할당 제외
+        # - 최소 디바운스 5분 (작업 사이클 중복 할당 방지)
+        query = """
+            SELECT 
+                d.*, 
+                COALESCE(t.success_count, 0) as success_count,
+                COALESCE(t.fail_count, 0) as fail_count
+            FROM destinations d
+            LEFT JOIN daily_tasks t ON d.dest_id = t.dest_id AND t.work_date = CURDATE()
+            LEFT JOIN v_failed_destinations_7d f ON d.dest_id = f.dest_id
+            WHERE d.status = 'on'
+              AND CURDATE() BETWEEN d.start_date AND d.expiry_date
+              AND (t.last_assigned_at IS NULL OR t.last_assigned_at < NOW() - INTERVAL 5 MINUTE)
+              AND f.dest_id IS NULL
+            HAVING success_count < d.daily_limit AND fail_count < 2
+            ORDER BY success_count ASC, RAND()
+            LIMIT 1
+        """
+        cursor.execute(query)
+        dest = cursor.fetchone()
+        
+        if not dest:
+            db.close(); return jsonify({"status": "error", "message": "No available targets"}), 404
+
+        # 3. Process Assignment
+        spoofed = generate_spoofed_identity()
+        now = datetime.datetime.now()
+
+        # Update Detail Log
+        cursor.execute("""
+            INSERT INTO task_log (device_id, dest_id, dest_name, ip, spoofed_identity, start_time, status) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (device_id, dest['dest_id'], dest['name'], request.remote_addr, json.dumps(spoofed), now, "RUNNING"))
+        log_id = cursor.lastrowid
+
+        # Update Summary Table (Upsert Allocation Time)
+        cursor.execute("""
+            INSERT INTO daily_tasks (dest_id, work_date, last_assigned_at) 
+            VALUES (%s, CURDATE(), %s)
+            ON DUPLICATE KEY UPDATE last_assigned_at = VALUES(last_assigned_at)
+        """, (dest['dest_id'], now))
+
+        db.commit()
+        db.close()
+
+        return jsonify({
+            "status": "ok", "log_id": log_id, "port": frida_port,
+            "destination": {
+                "id": str(dest['dest_id']), "name": dest['name'], "address": dest['address'],
+                "lat": float(dest['lat']), "lng": float(dest['lng']),
+                "min_arrival": dest['min_arrival'], "max_arrival": dest['max_arrival']
+            },
+            "identity": {
+                "original": {
+                    "ssaid": dev_info['orig_ssaid'], "adid": dev_info['orig_adid'],
+                    "idfv": dev_info['orig_idfv'], "ni": dev_info['orig_ni'], "token": dev_info['orig_token']
+                },
+                "spoofed": spoofed
+            }
+        })
+    except Exception as e:
+        print(f"[!] Request Error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/v1/update_status', methods=['POST'])
+def update_status():
+    data = request.json
+    log_id, device_id, status = data.get('log_id'), data.get('device_id'), data.get('status')
+    
+    # Optional stats
+    dist, duration = data.get('drive_dist'), data.get('drive_time')
+    real_ip = data.get('real_ip')
+    
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        now = datetime.datetime.now()
+        
+        # 0. Update Device IP
+        if device_id and real_ip and real_ip != "Unknown":
+            cursor.execute("UPDATE devices SET current_ip=%s, ip_updated_at=%s WHERE device_id=%s", (real_ip, now, device_id))
+
+        # 1. Update Detail Log
+        update_parts = ["status = %s", "end_time = %s"]
+        params = [status, now]
+        if real_ip and real_ip != "Unknown":
+            update_parts.append("ip = %s"); params.append(real_ip)
+        if dist is not None:
+            update_parts.append("distance_m = %s"); params.append(int(dist))
+        if duration is not None:
+            update_parts.append("duration_sec = %s"); params.append(int(duration))
+            
+        # Error details if exists
+        act_addr, req_addr, err_msg = data.get('actual_address'), data.get('requested_address'), data.get('error_msg')
+        if act_addr or err_msg:
+            status = f"{status} | Req:{req_addr} | Act:{act_addr} | Msg:{err_msg}"
+            params[0] = status
+
+        update_query = f"UPDATE task_log SET {', '.join(update_parts)} WHERE id = %s"
+        params.append(log_id)
+        cursor.execute(update_query, tuple(params))
+
+        # 2. Update Summary Table (SUCCESS ONLY - Upsert)
+        if "SUCCESS" in status:
+            cursor.execute("SELECT dest_id FROM task_log WHERE id = %s", (log_id,))
+            row = cursor.fetchone()
+            if row:
+                dest_id = row[0]
+                cursor.execute("""
+                    INSERT INTO daily_tasks (dest_id, work_date, success_count, fail_count, last_success_at) 
+                    VALUES (%s, CURDATE(), 1, 0, %s)
+                    ON DUPLICATE KEY UPDATE success_count = success_count + 1, fail_count = 0, last_success_at = VALUES(last_success_at)
+                """, (dest_id, now))
+
+        # 3. Fail Log if needed
+        if "FAIL" in status:
+            log_path = data.get('log_path')
+            cursor.execute("SELECT dest_id FROM task_log WHERE id = %s", (log_id,))
+            dest_row = cursor.fetchone()
+            dest_id = dest_row[0] if dest_row else "Unknown"
+
+            # Increment fail_count for specific failure (Upsert)
+            if "FAIL_ADDRESS_NOT_FOUND" in status and dest_id != "Unknown":
+                cursor.execute("""
+                    INSERT INTO daily_tasks (dest_id, work_date, success_count, fail_count, last_assigned_at)
+                    VALUES (%s, CURDATE(), 0, 1, %s)
+                    ON DUPLICATE KEY UPDATE fail_count = fail_count + 1
+                """, (dest_id, now))
+
+            cursor.execute("""
+                INSERT INTO fail_log (log_id, device_id, dest_id, fail_status, requested_address, actual_address, error_msg, log_path)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (log_id, device_id, dest_id, status, req_addr, act_addr, err_msg, log_path))
+
+        db.commit(); db.close()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        print(f"[!] Update Error: {e}"); return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5003)

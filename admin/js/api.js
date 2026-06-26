@@ -18,6 +18,7 @@ export async function fetchData(manual = false) {
     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
     const data = await res.json();
     
+    state.lastApiData = data; // Cache data
     updateUI(data);
   } catch (err) {
     console.error("Fetch Data Error:", err);
@@ -32,10 +33,35 @@ export async function fetchData(manual = false) {
 // Update UI elements based on API payload
 export function updateUI(data) {
   // 1. Statistics Progress Cards
-  const stats = data.summary;
-  state.totalTodaySuccess = stats.total_today_success || 0;
-  state.totalYesterdaySuccess = stats.total_yesterday_success || 0;
-  state.pastDateStrs = stats.past_date_strs || [];
+  const activeDate = state.activeDate || 'today';
+  const stats = data.summary[activeDate] || data.summary;
+  
+  // Highlight active date tab in UI
+  document.querySelectorAll(".date-tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.id === `btn-date-${activeDate}`);
+  });
+  
+  // Update date labels
+  const dateLabel = document.getElementById("summary-date-label");
+  if (dateLabel) {
+    if (activeDate === 'yesterday') dateLabel.innerText = " (어제)";
+    else if (activeDate === 'today') dateLabel.innerText = " (오늘 현재)";
+    else if (activeDate === 'tomorrow') dateLabel.innerText = " (내일)";
+  }
+  
+  // Today's unified summary card highlight
+  const totalCard = document.getElementById("total-summary-card");
+  if (totalCard) {
+    if (activeDate === 'today') {
+      totalCard.classList.add("active-today-highlight");
+    } else {
+      totalCard.classList.remove("active-today-highlight");
+    }
+  }
+
+  state.totalTodaySuccess = data.summary.total_today_success || 0;
+  state.totalYesterdaySuccess = data.summary.total_yesterday_success || 0;
+  state.pastDateStrs = data.summary.past_date_strs || [];
   
   // FSD
   const fsdPct = stats.fsd_target > 0 ? Math.round((stats.fsd_success / stats.fsd_target) * 100) : 0;
@@ -247,8 +273,33 @@ export async function updateDestStatus(destId, newStatus) {
   }
 }
 
+// Action: Update Dest Optimizer Status
+export async function updateDestOptimizer(destId, isOptimizerVal) {
+  try {
+    const res = await fetch("/api/v1/admin/dest/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dest_id: destId, is_optimizer: isOptimizerVal })
+    });
+    if (!res.ok) throw new Error("Update optimizer failed");
+    fetchData();
+  } catch (err) {
+    alert("옵티마이저 활성 상태 변경 실패: " + err.message);
+  }
+}
+
+// Action: Switch date view (yesterday, today, tomorrow)
+export function switchDate(dateKey) {
+  state.activeDate = dateKey;
+  if (state.lastApiData) {
+    updateUI(state.lastApiData);
+  }
+}
+
 // Bind to window for HTML click handlers
 window.fetchData = fetchData;
 window.toggleMute = toggleMute;
 window.updateDestLimit = updateDestLimit;
 window.updateDestStatus = updateDestStatus;
+window.updateDestOptimizer = updateDestOptimizer;
+window.switchDate = switchDate;

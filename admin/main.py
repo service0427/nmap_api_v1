@@ -17,7 +17,7 @@ if PROJECT_ROOT not in sys.path:
 # Import modular API endpoints
 from api import summary, devices, destinations
 
-app = FastAPI(title="Nmap Command Center PRO")
+app = FastAPI(title="Nmap Center PRO")
 
 # CORS Configuration
 app.add_middleware(

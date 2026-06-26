@@ -33,10 +33,6 @@ $VENV_PYTHON core/sync_engine.py >> "$PROJECT_DIR/logs/sync.log" 2>&1
 echo "[$(date '+%H:%M:%S')] [Step 1-1] Running Async Verifier..."
 $VENV_PYTHON core/async_verifier.py >> "$PROJECT_DIR/logs/verifier.log" 2>&1
 
-# Step 1-2: Sync Detailed Slot Workloads
-echo "[$(date '+%H:%M:%S')] [Step 1-2] Running Detailed Workload Sync..."
-$VENV_PYTHON core/sync_work_details.py >> "$PROJECT_DIR/logs/sync_work_details.log" 2>&1
-
 # Step 2: Daily Aggregator
 echo "[$(date '+%H:%M:%S')] [Step 2] Running Daily Aggregator..."
 $VENV_PYTHON core/daily_aggregator.py >> "$PROJECT_DIR/logs/aggregator.log" 2>&1

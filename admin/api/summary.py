@@ -15,96 +15,110 @@ from core.utils import get_kst_now, get_kst_date
 
 router = APIRouter()
 
+def get_stats_for_date(cursor, target_date, has_is_deleted):
+    is_deleted_filter1 = "AND rs.is_deleted = 0" if has_is_deleted else ""
+    cursor.execute(f"""
+        SELECT 
+            site_id,
+            SUM(target) as target,
+            SUM(success) as success,
+            SUM(fail) as fail
+        FROM (
+            SELECT 
+                rs.site_id,
+                rs.work_count as target,
+                IFNULL(dp.success_cnt, 0) as success,
+                IFNULL(dp.fail_cnt, 0) as fail
+            FROM raw_slots rs
+            LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.sid = dp.sid AND dp.work_date = %s
+            WHERE rs.status = 'on'
+              {is_deleted_filter1}
+              AND %s BETWEEN rs.start_date AND rs.end_date
+        ) t
+        GROUP BY site_id
+    """, (target_date, target_date))
+    rows = cursor.fetchall()
+    
+    stats_by_site = {str(row['site_id']).upper(): row for row in rows}
+    
+    fsd = stats_by_site.get('FSD', {'target': 0, 'success': 0, 'fail': 0})
+    luf = stats_by_site.get('LUF', {'target': 0, 'success': 0, 'fail': 0})
+    ssolup = stats_by_site.get('SSOLUP', {'target': 0, 'success': 0, 'fail': 0})
+    ghost2026 = stats_by_site.get('GHOST2026', {'target': 0, 'success': 0, 'fail': 0})
+    rudolph = stats_by_site.get('RUDOLPH', {'target': 0, 'success': 0, 'fail': 0})
+    test = stats_by_site.get('TEST', {'target': 0, 'success': 0, 'fail': 0})
+    
+    fsd_target = fsd['target'] or 0
+    fsd_success = fsd['success'] or 0
+    fsd_fail = fsd['fail'] or 0
+    
+    luf_target = luf['target'] or 0
+    luf_success = luf['success'] or 0
+    luf_fail = luf['fail'] or 0
+    
+    ssolup_target = ssolup['target'] or 0
+    ssolup_success = ssolup['success'] or 0
+    ssolup_fail = ssolup['fail'] or 0
+    
+    ghost_target = ghost2026['target'] or 0
+    ghost_success = ghost2026['success'] or 0
+    ghost_fail = ghost2026['fail'] or 0
+    
+    rudolph_target = rudolph['target'] or 0
+    rudolph_success = rudolph['success'] or 0
+    rudolph_fail = rudolph['fail'] or 0
+    
+    test_target = test['target'] or 0
+    test_success = test['success'] or 0
+    test_fail = test['fail'] or 0
+    
+    total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target
+    total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success
+    total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail
+    
+    return {
+        "fsd_target": fsd_target,
+        "fsd_success": fsd_success,
+        "fsd_fail": fsd_fail,
+        "luf_target": luf_target,
+        "luf_success": luf_success,
+        "luf_fail": luf_fail,
+        "ssolup_target": ssolup_target,
+        "ssolup_success": ssolup_success,
+        "ssolup_fail": ssolup_fail,
+        "ghost_target": ghost_target,
+        "ghost_success": ghost_success,
+        "ghost_fail": ghost_fail,
+        "rudolph_target": rudolph_target,
+        "rudolph_success": rudolph_success,
+        "rudolph_fail": rudolph_fail,
+        "test_target": test_target,
+        "test_success": test_success,
+        "test_fail": test_fail,
+        "total_target": total_active_target,
+        "success": total_active_success,
+        "fail": total_active_fail,
+        "remain": max(0, total_active_target - total_active_success)
+    }
+
 @router.get("/api/v1/admin/summary")
 async def get_admin_summary():
     kst_now, kst_date = get_kst_now(), get_kst_date()
     has_is_deleted = check_is_deleted_support()
     try:
         with get_db_cursor() as cursor:
-            # 1. Task Summary Cards (Grouping by site_id to support FSD and test separately)
-            is_deleted_filter1 = "AND rs.is_deleted = 0" if has_is_deleted else ""
-            cursor.execute(f"""
-                SELECT 
-                    site_id,
-                    SUM(target) as target,
-                    SUM(success) as success,
-                    SUM(fail) as fail
-                FROM (
-                    SELECT 
-                        rs.site_id,
-                        rs.work_count as target,
-                        IFNULL(dp.success_cnt, 0) as success,
-                        IFNULL(dp.fail_cnt, 0) as fail
-                    FROM raw_slots rs
-                    LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.dest_id = dp.dest_id AND dp.work_date = %s
-                    WHERE rs.status = 'on'
-                      {is_deleted_filter1}
-                      AND %s BETWEEN rs.start_date AND rs.end_date
-                ) t
-                GROUP BY site_id
-            """, (kst_date, kst_date))
-            rows = cursor.fetchall()
+            # 1. Task Summary Cards (yesterday, today, tomorrow)
+            yesterday_stats = get_stats_for_date(cursor, kst_date - timedelta(days=1), has_is_deleted)
+            today_stats = get_stats_for_date(cursor, kst_date, has_is_deleted)
+            tomorrow_stats = get_stats_for_date(cursor, kst_date + timedelta(days=1), has_is_deleted)
             
-            stats_by_site = {str(row['site_id']).upper(): row for row in rows}
-            fsd = stats_by_site.get('FSD', {'target': 0, 'success': 0, 'fail': 0})
-            luf = stats_by_site.get('LUF', {'target': 0, 'success': 0, 'fail': 0})
-            ssolup = stats_by_site.get('SSOLUP', {'target': 0, 'success': 0, 'fail': 0})
-            ghost2026 = stats_by_site.get('GHOST2026', {'target': 0, 'success': 0, 'fail': 0})
-            rudolph = stats_by_site.get('RUDOLPH', {'target': 0, 'success': 0, 'fail': 0})
-            test = stats_by_site.get('TEST', {'target': 0, 'success': 0, 'fail': 0})
-            
-            fsd_target = fsd['target'] or 0
-            fsd_success = fsd['success'] or 0
-            fsd_fail = fsd['fail'] or 0
-            
-            luf_target = luf['target'] or 0
-            luf_success = luf['success'] or 0
-            luf_fail = luf['fail'] or 0
-            
-            ssolup_target = ssolup['target'] or 0
-            ssolup_success = ssolup['success'] or 0
-            ssolup_fail = ssolup['fail'] or 0
-            
-            ghost_target = ghost2026['target'] or 0
-            ghost_success = ghost2026['success'] or 0
-            ghost_fail = ghost2026['fail'] or 0
-            
-            rudolph_target = rudolph['target'] or 0
-            rudolph_success = rudolph['success'] or 0
-            rudolph_fail = rudolph['fail'] or 0
-            
-            test_target = test['target'] or 0
-            test_success = test['success'] or 0
-            test_fail = test['fail'] or 0
-            
-            # 통합 작업 요약 시 FSD와 TEST는 비활성화/제외 처리 (GHOST, SSOLUP, RUDOLPH, LUF만 포함)
-            total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target
-            total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success
-            total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail
-
             summary_stats = {
-                "fsd_target": fsd_target,
-                "fsd_success": fsd_success,
-                "fsd_fail": fsd_fail,
-                "luf_target": luf_target,
-                "luf_success": luf_success,
-                "luf_fail": luf_fail,
-                "ssolup_target": ssolup_target,
-                "ssolup_success": ssolup_success,
-                "ssolup_fail": ssolup_fail,
-                "ghost_target": ghost_target,
-                "ghost_success": ghost_success,
-                "ghost_fail": ghost_fail,
-                "rudolph_target": rudolph_target,
-                "rudolph_success": rudolph_success,
-                "rudolph_fail": rudolph_fail,
-                "test_target": test_target,
-                "test_success": test_success,
-                "test_fail": test_fail,
-                "total_target": total_active_target,
-                "success": total_active_success,
-                "fail": total_active_fail,
-                "remain": max(0, total_active_target - total_active_success)
+                "yesterday": yesterday_stats,
+                "today": today_stats,
+                "tomorrow": tomorrow_stats,
+                "total_today_success": today_stats["success"],
+                "total_yesterday_success": yesterday_stats["success"],
+                "past_date_strs": [(kst_date - timedelta(days=i)).isoformat() for i in range(6, -1, -1)]
             }
             
             # 2. System Status
@@ -118,14 +132,14 @@ async def get_admin_summary():
             
             # 3. Devices (Detailed - counting success/fail from tasks_log directly for real-time accuracy)
             cursor.execute("""
-                SELECT d.device_id, d.current_ip, d.memo, d.status, d.is_alert_muted,
-                       d.install_place, d.install_count, d.network_type, d.git_version,
+                SELECT d.device_id, d.current_ip, d.hostname, d.hostname as memo, d.status, d.is_alert_muted,
+                       d.install_place, d.install_count, d.network_type,
                        tl.dest_name as current_dest,
                        tl.status as current_status,
                        tl.created_at as last_task_at,
-                       (SELECT COUNT(*) FROM tasks_log WHERE device_id = d.device_id AND status = 'SUCCESS' AND work_date = %s) as today_success,
-                       (SELECT COUNT(*) FROM tasks_log WHERE device_id = d.device_id AND status = 'FAIL' AND work_date = %s) as today_fail,
-                       (SELECT MAX(end_time) FROM tasks_log WHERE device_id = d.device_id AND status='SUCCESS' AND work_date = %s) as last_success_at
+                       IFNULL(stats.today_success, 0) as today_success,
+                       IFNULL(stats.today_fail, 0) as today_fail,
+                       ls.last_success_at
                 FROM devices d
                 LEFT JOIN (
                     SELECT t1.device_id, t1.dest_name, t1.status, t1.created_at
@@ -136,52 +150,70 @@ async def get_admin_summary():
                         GROUP BY device_id
                     ) t2 ON t1.id = t2.max_id
                 ) tl ON d.device_id = tl.device_id
-                ORDER BY d.memo ASC
-            """, (kst_date, kst_date, kst_date))
+                LEFT JOIN (
+                    SELECT 
+                        device_id,
+                        COUNT(CASE WHEN status = 'SUCCESS' AND work_date = %s THEN 1 END) as today_success,
+                        COUNT(CASE WHEN status = 'FAIL' AND work_date = %s THEN 1 END) as today_fail
+                    FROM tasks_log
+                    GROUP BY device_id
+                ) stats ON d.device_id = stats.device_id
+                LEFT JOIN (
+                    SELECT device_id, MAX(end_time) as last_success_at
+                    FROM tasks_log
+                    WHERE status = 'SUCCESS'
+                    GROUP BY device_id
+                ) ls ON d.device_id = ls.device_id
+                ORDER BY d.hostname ASC
+            """, (kst_date, kst_date))
             devices_list = cursor.fetchall()
 
             # Pre-calculate silence levels for status warnings
             for d in devices_list:
+                # Force status to uppercase for frontend compatibility
+                d['status'] = (d['status'] or '').upper()
                 d['silence_level'] = None
                 d['silence_minutes'] = 0
-                status_upper = (d['status'] or '').upper()
-                if status_upper == 'ON':
-                    if d['last_task_at']:
-                        last_active = d['last_task_at'].replace(tzinfo=kst_now.tzinfo)
-                        diff_seconds = (kst_now - last_active).total_seconds()
+                
+                if d['status'] == 'ON':
+                    # Warning triggers if last success is more than 20 minutes ago
+                    last_success = d['last_success_at']
+                    if last_success:
+                        last_success_kst = last_success.replace(tzinfo=kst_now.tzinfo)
+                        diff_seconds = (kst_now - last_success_kst).total_seconds()
                         diff_mins = int(diff_seconds // 60)
                         d['silence_minutes'] = diff_mins
-                        if diff_seconds > 1800:
+                        if diff_seconds > 1200: # 20 minutes threshold
                             d['silence_level'] = 'danger'
-                        elif diff_seconds > 1200:
-                            d['silence_level'] = 'warning'
                     else:
+                        # Never had a successful task
                         d['silence_level'] = 'danger'
+                        d['silence_minutes'] = 9999
 
             # 4. Destinations (Detailed - all slots for today including status)
-            is_deleted_sum_expr = "AND is_deleted = 0" if has_is_deleted else ""
-            is_deleted_where_expr = "AND is_deleted = 0" if has_is_deleted else ""
+            is_deleted_where_expr = "AND rs.is_deleted = 0" if has_is_deleted else ""
             cursor.execute(f"""
-                SELECT p.dest_id, p.name, p.address, p.is_optimizer, p.check_status, p.dist_min_m, p.dist_max_m,
-                       IFNULL(dp.success_cnt, 0) as success, IFNULL(dp.fail_cnt, 0) as fail,
-                       rs_agg.target,
-                       rs_agg.slot_status
-                FROM (
-                    SELECT dest_id, 
-                           SUM(work_count) as target,
-                           MAX(status) as slot_status
-                    FROM raw_slots
-                    WHERE %s BETWEEN start_date AND end_date AND site_id <> 'test' {is_deleted_where_expr} AND status = 'on'
-                    GROUP BY dest_id
-                ) rs_agg
-                JOIN places p ON rs_agg.dest_id = p.dest_id
-                LEFT JOIN (
-                    SELECT dest_id, SUM(success_cnt) as success_cnt, SUM(fail_cnt) as fail_cnt
-                    FROM daily_progress
-                    WHERE work_date = %s AND site_id <> 'test'
-                    GROUP BY dest_id
-                ) dp ON p.dest_id = dp.dest_id
-                ORDER BY slot_status DESC, success DESC
+                SELECT 
+                    rs.site_id,
+                    rs.dest_id,
+                    p.name,
+                    p.is_optimizer,
+                    p.check_status,
+                    p.dist_min_m,
+                    p.dist_max_m,
+                    SUM(rs.work_count) as target,
+                    MAX(rs.status) as slot_status,
+                    SUM(IFNULL(dp.success_cnt, 0)) as success,
+                    SUM(IFNULL(dp.fail_cnt, 0)) as fail
+                FROM raw_slots rs
+                JOIN places p ON rs.dest_id = p.dest_id
+                LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.sid = dp.sid AND dp.work_date = %s
+                WHERE %s BETWEEN rs.start_date AND rs.end_date 
+                  AND rs.site_id <> 'test' 
+                  {is_deleted_where_expr}
+                  AND rs.status = 'on'
+                GROUP BY rs.site_id, rs.dest_id, p.name, p.is_optimizer, p.check_status, p.dist_min_m, p.dist_max_m
+                ORDER BY rs.site_id ASC, rs.dest_id ASC
             """, (kst_date, kst_date))
             dest_list = cursor.fetchall()
 
@@ -195,7 +227,7 @@ async def get_admin_summary():
                     alarms.append({
                         "type": "DEVICE", 
                         "level": "danger", 
-                        "target": d['memo'] or d['device_id'], 
+                        "target": d['hostname'] or d['device_id'], 
                         "msg": f"실패 급증 ({d['today_fail']}회)"
                     })
                 # 2) Silence alert using calculated level
@@ -206,13 +238,13 @@ async def get_admin_summary():
                     alarms.append({
                         "type": "DEVICE", 
                         "level": d['silence_level'], 
-                        "target": d['memo'] or d['device_id'], 
+                        "target": d['hostname'] or d['device_id'], 
                         "msg": msg
                     })
             
             # 6. Recent Successes (Last 50 with Memo)
             cursor.execute("""
-                SELECT l.dest_name, IFNULL(d.memo, l.device_id) as device_memo, l.start_time 
+                SELECT l.dest_name, IFNULL(d.hostname, l.device_id) as device_memo, l.start_time 
                 FROM tasks_log l
                 LEFT JOIN devices d ON l.device_id = d.device_id
                 WHERE l.status='SUCCESS' 

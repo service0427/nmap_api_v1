@@ -21,14 +21,9 @@ def register_admin_endpoints(app, get_db_cursor, active_devices):
             with get_db_cursor() as cursor:
                 # 1. Summary Cards
                 cursor.execute("""
-                    SELECT (
-                        SELECT IFNULL(SUM(work_count), 0) FROM raw_slots 
-                        WHERE status='on' AND is_deleted = 0 AND %s BETWEEN start_date AND end_date
-                    ) + (
-                        SELECT IFNULL(SUM(work_count), 0) FROM raw_slots_tmp 
-                        WHERE work_date = %s AND dest_id IS NOT NULL AND dest_id != ''
-                    ) as total
-                """, (kst_date, kst_date))
+                    SELECT IFNULL(SUM(work_count), 0) as total FROM raw_slots 
+                    WHERE status='on' AND is_deleted = 0 AND %s BETWEEN start_date AND end_date
+                """, (kst_date,))
                 total_target = cursor.fetchone()['total'] or 0
                 cursor.execute("SELECT SUM(success_cnt) as s, SUM(fail_cnt) as f FROM daily_progress WHERE work_date = %s", (kst_date,))
                 prog = cursor.fetchone()
@@ -61,23 +56,15 @@ def register_admin_endpoints(app, get_db_cursor, active_devices):
                     SELECT p.dest_id, p.name, p.address, p.is_optimizer, p.dist_min_m, p.dist_max_m,
                            IFNULL(dp.success_cnt, 0) as success, IFNULL(dp.fail_cnt, 0) as fail,
                            (
-                               SELECT IFNULL(SUM(work_count), 0) FROM (
-                                   SELECT work_count FROM raw_slots WHERE dest_id = p.dest_id AND status='on' AND is_deleted = 0 AND %s BETWEEN start_date AND end_date
-                                   UNION ALL
-                                   SELECT work_count FROM raw_slots_tmp WHERE dest_id = p.dest_id AND work_date = %s
-                               ) t
+                               SELECT IFNULL(SUM(work_count), 0) FROM raw_slots WHERE dest_id = p.dest_id AND status='on' AND is_deleted = 0 AND %s BETWEEN start_date AND end_date
                            ) as target
                     FROM places p
                     LEFT JOIN daily_progress dp ON p.dest_id = dp.dest_id AND dp.work_date = %s
                     WHERE p.id IN (
-                        SELECT DISTINCT id FROM (
-                            SELECT p2.id FROM places p2 JOIN raw_slots rs ON p2.dest_id = rs.dest_id WHERE rs.status='on' AND rs.is_deleted = 0
-                            UNION ALL
-                            SELECT p2.id FROM places p2 JOIN raw_slots_tmp rst ON p2.dest_id = rst.dest_id WHERE rst.work_date = %s
-                        ) t
+                        SELECT DISTINCT p2.id FROM places p2 JOIN raw_slots rs ON p2.dest_id = rs.dest_id WHERE rs.status='on' AND rs.is_deleted = 0
                     )
                     ORDER BY success DESC
-                """, (kst_date, kst_date, kst_date, kst_date, kst_date))
+                """, (kst_date, kst_date))
                 dest_list = cursor.fetchall()
 
                 # 5. Recent Logs
@@ -127,11 +114,13 @@ def register_admin_endpoints(app, get_db_cursor, active_devices):
         dest_id = data.get("dest_id")
         status = data.get("status")
         limit = data.get("limit")
+        is_optimizer = data.get("is_optimizer")
         try:
             with get_db_cursor() as cursor:
                 if status: cursor.execute("UPDATE raw_slots SET status = %s WHERE dest_id = %s", (status, dest_id))
                 if limit is not None: 
                     cursor.execute("UPDATE raw_slots SET work_count = %s WHERE dest_id = %s AND status='on'", (limit, dest_id))
-                    cursor.execute("UPDATE raw_slots_tmp SET work_count = %s WHERE dest_id = %s AND work_date = %s", (limit, dest_id, get_kst_date()))
+                if is_optimizer is not None:
+                    cursor.execute("UPDATE places SET is_optimizer = %s WHERE dest_id = %s", (is_optimizer, dest_id))
             return {"status": "ok"}
         except Exception as e: raise HTTPException(status_code=500, detail=str(e))
