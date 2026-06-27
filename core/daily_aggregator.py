@@ -45,6 +45,14 @@ def aggregate_daily_quota():
                     print(f"    Deleted old ip_allocation_history: {cursor.rowcount} rows")
                 except Exception as ex_clean:
                     print(f"    Error during database cleanup: {ex_clean}")
+                
+                # Automated daily database backup
+                print("  Running Automated Daily Database Backup...")
+                try:
+                    from core.db_backup import run_backup
+                    run_backup()
+                except Exception as ex_backup:
+                    print(f"    Error during database backup: {ex_backup}")
             # We initialize for both Today and Tomorrow to avoid the midnight gap
             days_to_sync = [kst_date, kst_date + timedelta(days=1)]
             
