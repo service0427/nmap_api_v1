@@ -200,7 +200,7 @@ def run_all_syncs(dry_run=False, force=False):
                 module = importlib.import_module(f"core.sync_modules.{module_name}")
                 if hasattr(module, "fetch_data"):
                     # Hourly restriction for external sites (only run at XX:05, excluding 01:00-09:59 KST)
-                    is_external = (module_name.lower() in ('ssolup', 'ghost2026', 'luf', 'rudolph', 'quixslot'))
+                    is_external = (module_name.lower() in ('ssolup', 'ghost2026', 'rudolph', 'quixslot'))
                     if is_external and not force and not dry_run:
                         kst_now = get_kst_now()
                         if kst_now.minute != 5 or (1 <= kst_now.hour <= 9):
