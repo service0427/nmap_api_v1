@@ -90,7 +90,7 @@ def register_admin_endpoints(app, get_db_cursor, active_devices):
         try:
             with get_db_cursor() as cursor:
                 cursor.execute("""
-                    SELECT dest_name, status, DATE_FORMAT(start_time, '%H:%i') as time, 
+                    SELECT dest_id, dest_name, status, DATE_FORMAT(start_time, '%H:%i') as time, 
                            TIMESTAMPDIFF(MINUTE, start_time, COALESCE(end_time, %s)) as duration
                     FROM tasks_log WHERE device_id = %s AND work_date = %s ORDER BY start_time DESC
                 """, (kst_now, device_id, kst_date))

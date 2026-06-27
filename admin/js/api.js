@@ -99,6 +99,15 @@ export function updateUI(data) {
   if (ssolupProgressFill) ssolupProgressFill.style.width = `${Math.min(100, ssolupPct)}%`;
   if (ssolupCounts) ssolupCounts.innerText = `목표: ${stats.ssolup_target} | 성공: ${stats.ssolup_success} | 실패: ${stats.ssolup_fail}`;
 
+  // quixslot
+  const quixslotPct = stats.quixslot_target > 0 ? Math.round((stats.quixslot_success / stats.quixslot_target) * 100) : 0;
+  const quixslotPctEl = document.getElementById("quixslot-percent");
+  const quixslotProgressFill = document.getElementById("quixslot-progress-fill");
+  const quixslotCounts = document.getElementById("quixslot-counts");
+  if (quixslotPctEl) quixslotPctEl.innerText = `${quixslotPct}%`;
+  if (quixslotProgressFill) quixslotProgressFill.style.width = `${Math.min(100, quixslotPct)}%`;
+  if (quixslotCounts) quixslotCounts.innerText = `목표: ${stats.quixslot_target} | 성공: ${stats.quixslot_success} | 실패: ${stats.quixslot_fail}`;
+
   // ghost
   const ghostPct = stats.ghost_target > 0 ? Math.round((stats.ghost_success / stats.ghost_target) * 100) : 0;
   const ghostPctEl = document.getElementById("ghost-percent");

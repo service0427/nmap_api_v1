@@ -436,10 +436,6 @@ async def log_system_metrics():
                     INSERT INTO system_metrics (heartbeat_at, cpu_usage, ram_usage_mb, disk_free_gb, disk_total_gb, active_devices, total_req, net_sent_mb, net_recv_mb, db_pool_used)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (kst_now, cpu, ram_mb, disk_free_gb, disk_total_gb, devices_cnt, req_cnt, net_sent_mb, net_recv_mb, pool_used))
-                
-                # Cleanup: Keep only last 7 days of optimizer success logs and IP allocation history
-                cursor.execute("DELETE FROM optimizer_success_logs WHERE created_at < %s - INTERVAL 7 DAY", (kst_now,))
-                cursor.execute("DELETE FROM ip_allocation_history WHERE allocated_at < %s - INTERVAL 7 DAY", (kst_now,))
         except Exception as e: print(f"Monitoring Error: {e}")
         await asyncio.sleep(60)
 
@@ -487,9 +483,10 @@ async def request_task(req: TaskRequest):
                 cursor.execute("SELECT dest_id FROM tasks_log WHERE end_time IS NULL AND created_at > %s - INTERVAL %s SECOND", (kst_now, WORKING_LOCK_SEC))
                 locked_dest_ids = {str(row['dest_id']) for row in cursor.fetchall()}
 
-                # IP Exclusivity: Same IP cannot take same dest_id on the same KST day
+                # IP Exclusivity: Same IP cannot take same dest_id within the last 3 hours
                 if client_ip:
-                    cursor.execute("SELECT dest_id FROM ip_allocation_history WHERE ip = %s AND allocated_at >= %s", (client_ip, kst_date))
+                    three_hours_ago = kst_now - timedelta(hours=3)
+                    cursor.execute("SELECT dest_id FROM ip_allocation_history WHERE ip = %s AND allocated_at >= %s", (client_ip, three_hours_ago))
                     ip_allocated_ids = {str(row['dest_id']) for row in cursor.fetchall()}
                 else:
                     ip_allocated_ids = set()
@@ -636,6 +633,9 @@ async def request_task(req: TaskRequest):
                         if final_speed < 10.0:
                             final_arrival_s = max(60, int((final_dist / 1000.0) / 10.0 * 3600))
                             final_speed = 10.0
+                        elif final_speed > 80.0:
+                            final_arrival_s = int((final_dist / 1000.0) / 80.0 * 3600)
+                            final_speed = 80.0
                     else:
                         update_device_stats(cursor, req.device_id, alloc_fail=1)
                         cursor.execute("INSERT INTO keyword_allocation_failures (work_date, site_id, dest_id, dest_name, search_keyword, device_id, last_dist_m, last_rank) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (kst_date, task['site_id'], task['dest_id'], task['name'], search_keyword, req.device_id, int(dist), 99))
@@ -647,6 +647,9 @@ async def request_task(req: TaskRequest):
                     if final_speed < 10.0:
                         final_arrival_s = max(60, int((final_dist / 1000.0) / 10.0 * 3600))
                         final_speed = 10.0
+                    elif final_speed > 80.0:
+                        final_arrival_s = int((final_dist / 1000.0) / 80.0 * 3600)
+                        final_speed = 80.0
 
                 # 5. Identity Spoofing
                 spoofed_id = generate_spoofed_identity()
@@ -741,6 +744,11 @@ async def update_status(data: StatusUpdate):
                 if data.real_ip: 
                     update_device_ip(cursor, data.device_id, data.real_ip, kst_now)
                     sync_device_ip_to_legacy(data.device_id, data.real_ip)
+
+            # Record IP allocation for exclusivity check once we know the device's actual public IP
+            if data.real_ip and data.real_ip != "Unknown" and task_row:
+                if task_row.get('ip') != data.real_ip:
+                    cursor.execute("INSERT INTO ip_allocation_history (ip, dest_id, allocated_at) VALUES (%s, %s, %s)", (data.real_ip, task_row['dest_id'], kst_now))
                 
             update_parts, params = ["status = %s"], [data.status]
             if data.status in ['SUCCESS', 'FAIL'] or data.status.startswith('FAIL'): update_parts.append("end_time = %s"); params.append(kst_now)

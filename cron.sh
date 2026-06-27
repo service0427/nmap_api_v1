@@ -43,8 +43,12 @@ echo "[$(date '+%H:%M:%S')] [Step 3] Running GPS Boundary Optimizer..."
 $VENV_PYTHON core/optimizer.py >> "$PROJECT_DIR/logs/optimizer.log" 2>&1
 
 # Step 4: Batch Sync to Legacy Server (Local -> Old)
-echo "[$(date '+%H:%M:%S')] [Step 4] Running Batch Sync to Legacy..."
-$VENV_PYTHON core/sync_to_legacy.py >> "$PROJECT_DIR/logs/sync_to_legacy.log" 2>&1
+# echo "[$(date '+%H:%M:%S')] [Step 4] Running Batch Sync to Legacy..."
+# $VENV_PYTHON core/sync_to_legacy.py >> "$PROJECT_DIR/logs/sync_to_legacy.log" 2>&1
+
+# Step 5: Task Position Pool Refiller
+echo "[$(date '+%H:%M:%S')] [Step 5] Running Task Position Pool Refiller..."
+$VENV_PYTHON core/pool_refiller.py >> "$PROJECT_DIR/logs/pool_refiller.log" 2>&1
 
 echo "--- Cron Cycle Finished: $(date '+%Y-%m-%d %H:%M:%S') ---"
 

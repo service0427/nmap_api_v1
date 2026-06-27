@@ -186,11 +186,11 @@ function renderAccordionView(filteredDevices) {
     
     if (hostnameStr) {
       const pcMatch = hostnameStr.match(/^(PC[-_\s]?\d+)/i);
-      const uMatch = hostnameStr.match(/^(U[-_\s]?\d+|U\d+)/i);
+      const upMatch = hostnameStr.match(/^([UP][-_\s]?\d+|[UP]\d+)/i);
       
       if (pcMatch) {
         groupName = pcMatch[1].toUpperCase();
-      } else if (uMatch) {
+      } else if (upMatch) {
         groupName = hostnameStr.toUpperCase();
       } else {
         groupName = '기타 장비';
@@ -299,6 +299,11 @@ function renderAccordionView(filteredDevices) {
       const diffColor = diff > 0 ? 'var(--color-success)' : (diff < 0 ? 'var(--color-danger)' : 'var(--text-muted)');
       const compareText = `<span style="font-size:0.65rem; color:${diffColor}; font-weight:800; margin-left:0.15rem;">(${diffSign}${diff})</span>`;
 
+      if (d.has_identity_mismatch) {
+        borderColor = 'var(--color-danger)';
+        cardDiv.style.background = 'rgba(239, 68, 68, 0.08)';
+      }
+
       cardDiv.className = `device-card ${statusClass}`;
       cardDiv.style.padding = "0.5rem 0.6rem";
       cardDiv.style.gap = "0.25rem";
@@ -309,8 +314,9 @@ function renderAccordionView(filteredDevices) {
       cardDiv.innerHTML = `
         <div class="device-card-header" style="margin-bottom:0.15rem;">
           <div style="display: flex; align-items: center; gap: 0.25rem; min-width: 0; flex: 1;">
-            <span class="device-name" style="font-size:0.775rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width: 105px;" title="기기이름: ${d.hostname || '미정'}&#10;디바이스 ID: ${d.device_id}">${d.device_id}</span>
+            <span class="device-name" style="font-size:0.775rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width: 90px;" title="기기이름: ${d.hostname || '미정'}&#10;디바이스 ID: ${d.device_id}">${d.device_id}</span>
             <button class="badge secondary" style="cursor:pointer; padding: 0.05rem 0.2rem; font-size: 0.55rem; line-height: 1; flex-shrink: 0;" onclick="event.stopPropagation(); window.copyToClipboard('${d.device_id}', this)" title="ID 복사">복사</button>
+            ${d.has_identity_mismatch ? `<span class="badge danger" style="font-size:0.55rem; padding: 0.05rem 0.15rem; font-weight:800; flex-shrink:0; cursor:pointer;" title="신원 정보 불일치 오류 감지 (SSAID/ADID/TOKEN 확인 요망)">⚠️ 신원오류</span>` : ''}
           </div>
           <span class="badge ${statusBadgeClass}" style="font-size:0.6rem; padding:0.05rem 0.15rem; flex-shrink: 0; margin-left: 0.25rem;">
             <span class="status-indicator ${indClass}"></span> ${statusLabelText}
@@ -391,7 +397,13 @@ function renderCompactView(filteredDevices) {
     const diff = (d.today_success || 0) - (d.yesterday_success || 0);
     const diffText = diff > 0 ? `+${diff}` : `${diff}`;
 
-    const tooltip = `기기: ${d.hostname || '미정'} (${d.device_id})&#10;IP: ${d.current_ip || '--'}&#10;상태: ${d.status || 'OFF'}&#10;오늘성공: ${d.today_success || 0}건 (${diffText})&#10;오늘실패: ${d.today_fail || 0}건&#10;최근통신: ${lastTime}&#10;설치처: ${d.install_place || '미정'}`;
+    if (d.has_identity_mismatch) {
+      bgColor = 'rgba(239, 68, 68, 0.12)';
+      borderColor = 'var(--color-danger)';
+    }
+
+    const tooltip = `기기: ${d.hostname || '미정'} (${d.device_id})&#10;IP: ${d.current_ip || '--'}&#10;상태: ${d.status || 'OFF'}&#10;오늘성공: ${d.today_success || 0}건 (${diffText})&#10;오늘실패: ${d.today_fail || 0}건&#10;최근통신: ${lastTime}&#10;설치처: ${d.install_place || '미정'}` + 
+      (d.has_identity_mismatch ? '\u000A⚠️ 신원오류 감지: SSAID/ADID/TOKEN 불일치' : '');
 
     html += `
       <div class="compact-badge" 
@@ -400,7 +412,7 @@ function renderCompactView(filteredDevices) {
            style="cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 0.4rem 0.2rem; border-radius: 4px; border:1px solid ${borderColor}; background:${bgColor}; font-size:0.65rem; transition: all 0.2s;"
            onmouseover="this.style.borderColor='var(--color-primary)'; this.style.transform='translateY(-1px)';"
            onmouseout="this.style.borderColor='${borderColor}'; this.style.transform='none';">
-        <span style="font-weight:700; width:100%; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${shortName}</span>
+        <span style="font-weight:700; width:100%; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${shortName}${d.has_identity_mismatch ? ' ⚠️' : ''}</span>
         <div style="display:flex; align-items:center; gap:0.15rem; font-size:0.55rem; color:var(--text-muted); font-weight:600; margin-top:0.1rem;">
           <span style="width: 5px; height: 5px; border-radius: 50%; background-color: ${statusDotColor}; display:inline-block;"></span>
           <span>S:${d.today_success || 0}</span>
@@ -425,7 +437,18 @@ function renderTableView(filteredDevices) {
 
   const gridOptions = {
     columnDefs: [
-      { field: 'hostname', headerName: '기기이름', sortable: true, filter: true, width: 150 },
+      { 
+        field: 'hostname', 
+        headerName: '기기이름', 
+        sortable: true, 
+        filter: true, 
+        width: 150,
+        cellRenderer: params => {
+          const d = params.data;
+          const warning = d.has_identity_mismatch ? `<span class="badge danger" style="font-size:0.55rem; padding:0.05rem 0.15rem; font-weight:800; margin-left:0.25rem;">⚠️ 신원오류</span>` : '';
+          return `<span>${d.hostname || '미정'}</span>${warning}`;
+        }
+      },
       { 
         field: 'device_id', 
         headerName: '디바이스 ID', 

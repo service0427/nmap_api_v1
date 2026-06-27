@@ -40,7 +40,7 @@ def log_sync_detail(cursor, summary_id, site_id, sid, action, old_data=None, new
         VALUES (%s, %s, %s, %s, %s, %s)
     """, (summary_id, site_id, sid, action, json.dumps(old_data) if old_data else None, json.dumps(new_data) if new_data else None))
 
-def ensure_place_info(cursor, dest_id, source_places_cache=None, force_update=False):
+def ensure_place_info(cursor, dest_id, force_update=False):
     # 1. 이미 존재하는지 조회
     cursor.execute("SELECT dest_id, name, check_status FROM places WHERE dest_id = %s", (dest_id,))
     row = cursor.fetchone()
@@ -49,39 +49,14 @@ def ensure_place_info(cursor, dest_id, source_places_cache=None, force_update=Fa
     if row:
         return True
 
-    # 2. 존재하지 않는 완전히 새로운 dest_id는 동기식 스크래핑을 배제하고 PENDING으로 우선 적재 (네이버 차단 방지)
-    # 강제 업데이트가 아닐 때만 소스 캐시 활용 (원본 FSD 정보)
-    if source_places_cache and dest_id in source_places_cache:
-        sp = source_places_cache[dest_id]
-        name = sp['name'] or ''
-        is_opt = 1 if re.search(r'누수|청소|하수구|변기|이사|싱크대|뚫음', name) else 0
-        cursor.execute("""
-            INSERT IGNORE INTO places (dest_id, name, address, lat, lng, check_status, is_optimizer)
-            VALUES (%s, %s, %s, %s, %s, 'VERIFIED', %s)
-        """, (sp['dest_id'], name, sp['address'], sp['lat'], sp['lng'], is_opt))
-        return True
-
-    # 캐시가 없는 순수 신규 dest_id는 'PENDING'으로 신속 등록하여 비동기 후처리기가 긁어가도록 위임
+    # 캐시가 없는 완전히 새로운 dest_id는 'PENDING'으로 신속 등록하여 비동기 후처리기가 긁어가도록 위임
     cursor.execute("""
         INSERT IGNORE INTO places (dest_id, name, check_status)
         VALUES (%s, %s, 'PENDING')
     """, (dest_id, f"PENDING_{dest_id}"))
     return True
 
-def fetch_source_destinations_cache():
-    try:
-        conf = Config.get_source_fsd_config()
-        if not conf.get('host'): return {}
-        conn = pymysql.connect(**conf)
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT dest_id, name, address, lat, lng FROM destinations")
-            rows = cursor.fetchall()
-        conn.close()
-        return {str(r['dest_id']): r for r in rows}
-    except:
-        return {}
-
-def process_sync(site_id, standardized_data, source_places_cache=None, dry_run=False):
+def process_sync(site_id, standardized_data, dry_run=False):
     if dry_run:
         print(f"\n--- [DRY-RUN] Data for {site_id} ({len(standardized_data)} items) ---")
         for item in standardized_data[:3]: print(f"  Sample: {item}")
@@ -125,7 +100,7 @@ def process_sync(site_id, standardized_data, source_places_cache=None, dry_run=F
                 local_fail_cnt = dp_row['total_fail'] if dp_row else 0
 
                 is_high_failure = True if local_fail_cnt >= 2 else False
-                ensure_place_info(cursor, item['dest_id'], source_places_cache, force_update=is_high_failure)
+                ensure_place_info(cursor, item['dest_id'], force_update=is_high_failure)
                 
                 if local_fail_cnt >= 2:
                     cursor.execute("""
@@ -216,7 +191,6 @@ def process_sync(site_id, standardized_data, source_places_cache=None, dry_run=F
         conn.close()
 
 def run_all_syncs(dry_run=False, force=False):
-    source_places_cache = fetch_source_destinations_cache()
     modules_dir = os.path.join(os.path.dirname(__file__), "sync_modules")
     if not os.path.exists(modules_dir): return
     for filename in os.listdir(modules_dir):
@@ -226,7 +200,7 @@ def run_all_syncs(dry_run=False, force=False):
                 module = importlib.import_module(f"core.sync_modules.{module_name}")
                 if hasattr(module, "fetch_data"):
                     # Hourly restriction for external sites (only run at XX:05, excluding 01:00-09:59 KST)
-                    is_external = (module_name.lower() in ('ssolup', 'ghost2026', 'luf', 'rudolph'))
+                    is_external = (module_name.lower() in ('ssolup', 'ghost2026', 'luf', 'rudolph', 'quixslot'))
                     if is_external and not force and not dry_run:
                         kst_now = get_kst_now()
                         if kst_now.minute != 5 or (1 <= kst_now.hour <= 9):
@@ -246,7 +220,7 @@ def run_all_syncs(dry_run=False, force=False):
                     
                     data = module.fetch_data()
                     if data is not None:
-                        process_sync(module_name.upper(), data, source_places_cache, dry_run=dry_run)
+                        process_sync(module_name.upper(), data, dry_run=dry_run)
                         
                         # 수집 성공 시 1일 1회 체크 완료 기록
                         if is_daily and not dry_run:

@@ -20,7 +20,7 @@ async def get_device_history(device_id: str):
     try:
         with get_db_cursor() as cursor:
             cursor.execute("""
-                SELECT dest_name, status, DATE_FORMAT(start_time, '%%H:%%i') as time, 
+                SELECT id as task_id, dest_id, dest_name, status, DATE_FORMAT(start_time, '%%H:%%i') as time, 
                        TIMESTAMPDIFF(MINUTE, start_time, COALESCE(end_time, %s)) as duration
                 FROM tasks_log 
                 WHERE device_id = %s AND work_date = %s 

@@ -11,3 +11,7 @@ data/hashes/*.txt
 
 # OS
 .DS_Store
+
+# Temporary files
+temp/
+

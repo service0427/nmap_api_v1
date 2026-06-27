@@ -10,7 +10,10 @@ export async function openDeviceDetailModal(deviceId) {
 
   // Set inputs
   document.getElementById("detail-device-id").value = d.device_id;
-  document.getElementById("detail-device-code").innerText = d.device_id; // Set Device ID
+  const devCodeEl = document.getElementById("detail-device-code");
+  if (devCodeEl) devCodeEl.innerText = d.device_id; // Set Device ID
+  const devIdTextEl = document.getElementById("detail-device-id-text");
+  if (devIdTextEl) devIdTextEl.innerText = d.device_id;
   document.getElementById("detail-ip-display").innerText = `IP: ${d.current_ip || '--'}`;
 
   const hostnameEl = document.getElementById("detail-hostname") || document.getElementById("detail-memo");
@@ -27,8 +30,15 @@ export async function openDeviceDetailModal(deviceId) {
     if (parent) parent.style.display = 'flex';
   }
 
+  // Show/Hide Identity Mismatch Warning
+  const mismatchBanner = document.getElementById("detail-mismatch-banner");
+  if (mismatchBanner) {
+    mismatchBanner.style.display = d.has_identity_mismatch ? "block" : "none";
+  }
+
   // Make sure Single elements are visible
-  document.getElementById("detail-code-container").style.display = 'flex';
+  const devCodeCont = document.getElementById("detail-code-container");
+  if (devCodeCont) devCodeCont.style.display = 'flex';
   document.getElementById("detail-trend-container").style.display = 'flex';
   
   const muteBtn = document.getElementById("detail-mute-btn");
@@ -106,10 +116,12 @@ export async function openDeviceDetailModal(deviceId) {
           const durationFormatted = h.duration !== null ? `${h.duration}분` : "--";
           tr.innerHTML = `
             <td style="padding: 0.45rem 0.5rem; max-width: 155px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              <strong>${h.dest_name || '--'}</strong>
+              <strong>${h.dest_name || '--'}</strong><br/>
+              <span style="font-size:0.625rem; color:var(--text-muted); font-family:monospace;">${h.dest_id || '--'}</span>
             </td>
             <td style="padding: 0.45rem 0.5rem;">
               <span class="badge ${h.status === 'SUCCESS' ? 'success' : 'danger'}" style="font-size:0.6rem; padding:0 0.25rem;">${h.status}</span>
+              <div style="font-size:0.55rem; color:var(--text-muted); font-family:monospace; margin-top:0.15rem; white-space:nowrap;">ID: ${h.task_id || '--'}</div>
             </td>
             <td style="padding: 0.45rem 0.5rem;"><code>${h.time}</code></td>
             <td style="padding: 0.45rem 0.5rem; text-align:right;">${durationFormatted}</td>
@@ -144,7 +156,8 @@ export function openEditDeviceGroupModal(groupName, deviceIds) {
   // Hide Single elements in group mode
   const memoEl = document.getElementById("detail-memo") || document.getElementById("detail-hostname");
   if (memoEl) memoEl.closest('.form-group').style.display = 'none';
-  document.getElementById("detail-code-container").style.display = 'none';
+  const devCodeCont = document.getElementById("detail-code-container");
+  if (devCodeCont) devCodeCont.style.display = 'none';
   document.getElementById("detail-trend-container").style.display = 'none';
   document.getElementById("detail-mute-btn").closest('div').style.display = 'none';
   
@@ -240,8 +253,8 @@ export async function toggleDetailMute() {
 }
 
 export function copyDeviceCode() {
-  const code = document.getElementById("detail-device-code").innerText;
-  if (!code || code === '--') return;
+  const code = document.getElementById("detail-device-id").value;
+  if (!code) return;
   navigator.clipboard.writeText(code).then(() => {
     const alertDiv = document.createElement("div");
     alertDiv.style.position = "fixed";
@@ -255,7 +268,7 @@ export function copyDeviceCode() {
     alertDiv.style.fontSize = "0.75rem";
     alertDiv.style.fontWeight = "700";
     alertDiv.style.zIndex = "99999";
-    alertDiv.innerText = `기기 코드 [${code}] 복사 완료!`;
+    alertDiv.innerText = `기기 ID [${code}] 복사 완료!`;
     document.body.appendChild(alertDiv);
     setTimeout(() => alertDiv.remove(), 1500);
   }).catch(err => {
@@ -269,3 +282,4 @@ window.openEditDeviceGroupModal = openEditDeviceGroupModal;
 window.saveDetailDeviceInfo = saveDetailDeviceInfo;
 window.toggleDetailMute = toggleDetailMute;
 window.copyDeviceCode = copyDeviceCode;
+window.copyDeviceID = copyDeviceCode;

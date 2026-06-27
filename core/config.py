@@ -17,7 +17,7 @@ class Config:
         
         db_user = os.getenv('DB_USER', 'nmap')
         db_pass = os.getenv('DB_PASSWORD', 'Tech1324')
-        db_name = os.getenv('DB_NAME', 'nmap_api')
+        db_name = os.getenv('DB_NAME', 'nmap_api_v1')
         db_host = os.getenv('DB_HOST')
         db_port = int(os.getenv('DB_PORT', 3306))
         db_socket = os.getenv('DB_SOCKET')
@@ -46,18 +46,7 @@ class Config:
             
         return conf
 
-    @classmethod
-    def get_source_fsd_config(cls):
-        import pymysql
-        cls.load()
-        return {
-            'host': os.getenv('DB_SOURCE_HOST'),
-            'user': os.getenv('DB_SOURCE_USER'),
-            'password': os.getenv('DB_SOURCE_PASSWORD'),
-            'database': os.getenv('DB_SOURCE_NAME'),
-            'charset': 'utf8mb4',
-            'cursorclass': pymysql.cursors.DictCursor
-        }
+
 
     @staticmethod
     def get_hmac_key():

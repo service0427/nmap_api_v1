@@ -16,7 +16,7 @@ from core.utils import get_kst_now, get_kst_date
 router = APIRouter()
 
 def get_stats_for_date(cursor, target_date, has_is_deleted):
-    is_deleted_filter1 = "AND rs.is_deleted = 0" if has_is_deleted else ""
+    is_deleted_filter1 = f"AND (rs.is_deleted = 0 OR (rs.is_deleted = 1 AND DATE(rs.deleted_at) >= '{target_date.isoformat()}'))" if has_is_deleted else ""
     cursor.execute(f"""
         SELECT 
             site_id,
@@ -31,7 +31,7 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
                 IFNULL(dp.fail_cnt, 0) as fail
             FROM raw_slots rs
             LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.sid = dp.sid AND dp.work_date = %s
-            WHERE rs.status = 'on'
+            WHERE (rs.status = 'on' OR (rs.is_deleted = 1 AND DATE(rs.deleted_at) >= '{target_date.isoformat()}'))
               {is_deleted_filter1}
               AND %s BETWEEN rs.start_date AND rs.end_date
         ) t
@@ -46,6 +46,7 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
     ssolup = stats_by_site.get('SSOLUP', {'target': 0, 'success': 0, 'fail': 0})
     ghost2026 = stats_by_site.get('GHOST2026', {'target': 0, 'success': 0, 'fail': 0})
     rudolph = stats_by_site.get('RUDOLPH', {'target': 0, 'success': 0, 'fail': 0})
+    quixslot = stats_by_site.get('QUIXSLOT', {'target': 0, 'success': 0, 'fail': 0})
     test = stats_by_site.get('TEST', {'target': 0, 'success': 0, 'fail': 0})
     
     fsd_target = fsd['target'] or 0
@@ -68,13 +69,17 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
     rudolph_success = rudolph['success'] or 0
     rudolph_fail = rudolph['fail'] or 0
     
+    quixslot_target = quixslot['target'] or 0
+    quixslot_success = quixslot['success'] or 0
+    quixslot_fail = quixslot['fail'] or 0
+    
     test_target = test['target'] or 0
     test_success = test['success'] or 0
     test_fail = test['fail'] or 0
     
-    total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target
-    total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success
-    total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail
+    total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target + quixslot_target
+    total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success + quixslot_success
+    total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail + quixslot_fail
     
     return {
         "fsd_target": fsd_target,
@@ -92,6 +97,9 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
         "rudolph_target": rudolph_target,
         "rudolph_success": rudolph_success,
         "rudolph_fail": rudolph_fail,
+        "quixslot_target": quixslot_target,
+        "quixslot_success": quixslot_success,
+        "quixslot_fail": quixslot_fail,
         "test_target": test_target,
         "test_success": test_success,
         "test_fail": test_fail,
@@ -136,13 +144,14 @@ async def get_admin_summary():
                        d.install_place, d.install_count, d.network_type,
                        tl.dest_name as current_dest,
                        tl.status as current_status,
+                       tl.result_msg as last_result_msg,
                        tl.created_at as last_task_at,
                        IFNULL(stats.today_success, 0) as today_success,
                        IFNULL(stats.today_fail, 0) as today_fail,
                        ls.last_success_at
                 FROM devices d
                 LEFT JOIN (
-                    SELECT t1.device_id, t1.dest_name, t1.status, t1.created_at
+                    SELECT t1.device_id, t1.dest_name, t1.status, t1.result_msg, t1.created_at
                     FROM tasks_log t1
                     INNER JOIN (
                         SELECT device_id, MAX(id) as max_id 
@@ -175,6 +184,11 @@ async def get_admin_summary():
                 d['silence_level'] = None
                 d['silence_minutes'] = 0
                 
+                # Check for identity mismatch error
+                d['has_identity_mismatch'] = False
+                if d.get('last_result_msg') and 'IDENTITY_MISMATCH' in str(d['last_result_msg']):
+                    d['has_identity_mismatch'] = True
+                
                 if d['status'] == 'ON':
                     # Warning triggers if last success is more than 20 minutes ago
                     last_success = d['last_success_at']
@@ -204,7 +218,10 @@ async def get_admin_summary():
                     SUM(rs.work_count) as target,
                     MAX(rs.status) as slot_status,
                     SUM(IFNULL(dp.success_cnt, 0)) as success,
-                    SUM(IFNULL(dp.fail_cnt, 0)) as fail
+                    SUM(IFNULL(dp.fail_cnt, 0)) as fail,
+                    SUM(IFNULL(dp.miss_cnt, 0)) as miss,
+                    SUM(IFNULL(dp.timeout_cnt, 0)) as timeout,
+                    SUM(IFNULL(dp.mismatch_cnt, 0)) as mismatch
                 FROM raw_slots rs
                 JOIN places p ON rs.dest_id = p.dest_id
                 LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.sid = dp.sid AND dp.work_date = %s

@@ -62,12 +62,27 @@ export function initGrids() {
       },
       { 
         headerName: "오늘 달성량", 
-        width: 150,
+        width: 220,
         valueGetter: p => `${p.data.success || 0} / ${p.data.fail || 0}`,
-        cellRenderer: p => `
-          <span class="badge success">${p.data.success || 0} 성공</span>
-          <span class="badge ${p.data.fail > 0 ? 'danger' : 'warning'}">${p.data.fail || 0} 실패</span>
-        `
+        cellRenderer: p => {
+          const s = p.data.success || 0;
+          const f = p.data.fail || 0;
+          const miss = p.data.miss || 0;
+          const timeout = p.data.timeout || 0;
+          const mismatch = p.data.mismatch || 0;
+          
+          let failTooltip = `총 실패: ${f}건`;
+          if (f > 0) {
+            failTooltip += `&#10;- 미노출(Miss): ${miss}건&#10;- 네트워크: ${timeout}건&#10;- 신원오류: ${mismatch}건`;
+          }
+          
+          const detailsText = f > 0 ? ` (M:${miss}|N:${timeout}|I:${mismatch})` : '';
+          
+          return `
+            <span class="badge success" style="font-weight:700;">${s} 성공</span>
+            <span class="badge ${f > 0 ? 'danger' : 'warning'}" style="font-weight:700;" title="${failTooltip}">${f} 실패${detailsText}</span>
+          `;
+        }
       }
     ],
     pagination: true,
