@@ -21,6 +21,7 @@ def run_backup():
     db_pass = db_cfg.get('password')
     db_name = db_cfg.get('database')
     db_port = db_cfg.get('port', 3306)
+    db_socket = db_cfg.get('unix_socket')
     
     # 2. Setup backup directory
     backup_dir = "/home/tech/db_backups"
@@ -36,15 +37,18 @@ def run_backup():
     # Use --single-transaction and --quick to prevent locking live tables
     cmd = [
         "mysqldump",
-        f"-h{db_host}",
-        f"-P{db_port}",
         f"-u{db_user}",
         f"-p{db_pass}",
         "--single-transaction",
         "--quick",
         "--lock-tables=false",
-        db_name
     ]
+    if db_host:
+        cmd.extend([f"-h{db_host}", f"-P{db_port}"])
+    elif db_socket:
+        cmd.append(f"--socket={db_socket}")
+        
+    cmd.append(db_name)
     
     try:
         # Pipe mysqldump stdout to gzip and save to file
