@@ -114,40 +114,4 @@ export function initGrids() {
     ensureDomOrder: true
   };
   state.destinationsGridApi = agGrid.createGrid(document.querySelector('#grid-destinations'), destinationsGridOptions);
-
-  // 2. Logs Grid
-  const logsGridOptions = {
-    columnDefs: [
-      { field: "id", headerName: "ID", width: 80, cellClass: 'text-muted' },
-      { field: "dest_name", headerName: "목적지명", width: 220 },
-      { field: "device_id", headerName: "장비 ID", cellClass: 'font-mono', width: 140 },
-      { field: "ip", headerName: "할당 IP", cellClass: 'font-mono', width: 130 },
-      { 
-        field: "status", 
-        headerName: "수행 상태", 
-        width: 110,
-        cellRenderer: p => `
-          <span class="badge ${p.value === 'SUCCESS' ? 'success' : (p.value === 'FAIL' ? 'danger' : 'info')}">
-            ${p.value}
-          </span>
-        `
-      },
-      { 
-        field: "start_time", 
-        headerName: "시작 시간", 
-        width: 130,
-        valueFormatter: p => p.value ? p.value.substring(11, 19) : "--"
-      },
-      { 
-        field: "end_time", 
-        headerName: "종료 시간", 
-        width: 130,
-        valueFormatter: p => p.value ? p.value.substring(11, 19) : "--"
-      }
-    ],
-    pagination: true,
-    paginationPageSize: 100,
-    paginationPageSizeSelector: [50, 100, 200]
-  };
-  state.logsGridApi = agGrid.createGrid(document.querySelector('#grid-logs'), logsGridOptions);
 }

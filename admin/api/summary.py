@@ -276,10 +276,6 @@ async def get_admin_summary():
             """)
             recent_successes = cursor.fetchall()
 
-            # 7. Recent Logs (For the log grid)
-            cursor.execute("SELECT id, dest_name, device_id, status, ip, start_time, end_time FROM tasks_log ORDER BY id DESC LIMIT 100")
-            recent_logs = cursor.fetchall()
-
             # 8. LTE Usage (Join with yesterday's data for comparison)
             yesterday_date = kst_date - timedelta(days=1)
             cursor.execute("""
@@ -350,7 +346,7 @@ async def get_admin_summary():
             "system": system_status, 
             "devices": devices_list, 
             "destinations": dest_list, 
-            "logs": recent_logs, 
+            "logs": [], 
             "lte": lte_usage, 
             "alarms": alarms[:20],
             "success_feed": recent_successes

@@ -244,9 +244,6 @@ export function updateUI(data) {
   // 6. Bind data to LTE Cards
   state.rawLteData = data.lte || [];
   filterLteCards();
-
-  // 7. Bind logs
-  if (state.logsGridApi) state.logsGridApi.setGridOption('rowData', data.logs || []);
   
   // Store destinations globally for manual input filtering
   state.rawDestinations = data.destinations || [];
