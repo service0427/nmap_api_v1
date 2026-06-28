@@ -91,8 +91,7 @@ export function filterDestinationsLocally(resetPage = false) {
 
           card.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem;">
-              <span style="font-size:0.75rem; color:var(--color-primary); font-weight:700;">${d.site_id || 'UNKNOWN'}</span>
-              <div style="display:flex; gap:0.25rem;">
+              <div style="display:flex; align-items:center; gap:0.25rem;">
                 <span class="badge ${d.slot_status === 'on' ? 'success' : 'danger'}" style="font-size:0.65rem; padding:0.1rem 0.35rem;">
                   ${d.slot_status === 'on' ? '활성' : '비활성'}
                 </span>
@@ -100,24 +99,39 @@ export function filterDestinationsLocally(resetPage = false) {
                   ${checkStatusText}
                 </span>
               </div>
+              <span style="font-size:0.65rem; color:var(--text-muted); font-weight:600; background:rgba(255,255,255,0.03); padding:0.1rem 0.3rem; border-radius:3px;">
+                ${d.site_id || 'UNKNOWN'}
+              </span>
             </div>
-            <h4 style="font-size:0.9rem; font-weight:700; margin:0 0 0.3rem 0; color:var(--text-primary);">${d.name || '이름 없음'}</h4>
-            <div style="font-size:0.7rem; color:var(--text-muted); font-family:monospace; display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
-              <span>ID: ${d.dest_id}</span>
-              <button class="badge secondary" style="cursor:pointer; padding: 0.1rem 0.35rem; font-size:0.6rem;" onclick="window.copyToClipboard('${d.dest_id}', this)">복사</button>
+            
+            <h4 style="font-size:1.0rem; font-weight:800; margin:0 0 0.4rem 0; color:var(--text-primary); line-height:1.3;">
+              ${d.name || '이름 없음'}
+            </h4>
+            
+            <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; background:rgba(0,0,0,0.15); padding:0.35rem 0.6rem; border-radius:4px;">
+              <span>ID: <strong style="font-family:monospace; color:var(--text-primary); font-size:0.8rem;">${d.dest_id}</strong></span>
+              <button class="badge secondary" style="cursor:pointer; padding: 0.15rem 0.4rem; font-size:0.65rem; border:1px solid var(--border-color);" onclick="window.copyToClipboard('${d.dest_id}', this)">ID 복사</button>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; border-top:1px solid rgba(255,255,255,0.03); padding-top:0.6rem; margin-bottom:0.6rem;">
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; border-top:1px solid rgba(255,255,255,0.03); padding-top:0.65rem; margin-bottom:0.65rem;">
               <div>
-                <span style="color:var(--text-muted);">목표:</span> <strong style="color:var(--text-primary); font-size:0.8rem;">${d.target || 0}</strong>
+                <span style="color:var(--text-muted);">달성/목표:</span>
+                <span class="badge success" style="font-weight:800; font-size:0.75rem; padding:0.15rem 0.4rem; margin-left:0.25rem;">
+                  ${d.success || 0} 성공
+                </span>
+                <span style="color:var(--text-muted); margin:0 0.15rem;">/</span>
+                <strong style="color:var(--text-primary); font-size:0.85rem;">${d.target || 0}</strong>
               </div>
-              <div style="display:flex; gap:4px;">
-                <span class="badge success" style="font-weight:700; font-size:0.65rem; padding:0.1rem 0.35rem;">${d.success || 0} 성공</span>
-                <span class="badge ${d.fail > 0 ? 'danger' : 'warning'}" style="font-weight:700; font-size:0.65rem; padding:0.1rem 0.35rem;">${d.fail || 0} 실패</span>
+              <div>
+                <span class="badge ${d.fail > 0 ? 'danger' : 'secondary'}" style="font-weight:700; font-size:0.65rem; padding:0.1rem 0.35rem;">
+                  실패: ${d.fail || 0}
+                </span>
               </div>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.01); border:1px solid var(--border-color); padding:0.4rem 0.6rem; border-radius:6px; margin-top:0.25rem;">
+            
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.01); border:1px solid var(--border-color); padding:0.45rem 0.65rem; border-radius:6px;">
               <span style="font-size:0.7rem; font-weight:600; color:var(--text-muted);">GPS 옵티마이저</span>
-              <span class="badge ${d.is_optimizer ? 'success' : 'secondary'}" style="cursor:pointer; padding: 0.15rem 0.45rem; font-size:0.65rem;" onclick="window.updateDestOptimizer('${d.dest_id}', ${d.is_optimizer ? 0 : 1})">
+              <span class="badge ${d.is_optimizer ? 'success' : 'secondary'}" style="cursor:pointer; padding: 0.2rem 0.5rem; font-size:0.65rem; font-weight:700;" onclick="window.updateDestOptimizer('${d.dest_id}', ${d.is_optimizer ? 0 : 1})">
                 ${d.is_optimizer ? 'ON' : 'OFF'}
               </span>
             </div>
