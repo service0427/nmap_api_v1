@@ -16,10 +16,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.2.1/styles/ag-theme-quartz.min.css"/>
   
   <!-- Premium Style Sheet -->
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=1.1.10">
   
   <!-- Premium Modular Javascript Applications Entry Point -->
-  <script type="module" src="/app.js?v=1.1.9"></script>
+  <script type="module" src="/app.js?v=1.1.10"></script>
 </head>
 <body>
 
@@ -67,28 +67,46 @@
       </div>
 
       <!-- Overall Summary Hero Section (Full Width) -->
-      <div class="card warning" id="total-summary-card" style="margin-bottom: 1.25rem; padding: 1.5rem; background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(17, 24, 39, 0.8) 100%); border: 1px solid rgba(245, 158, 11, 0.2); box-shadow: 0 8px 32px rgba(245, 158, 11, 0.05);">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+      <div class="card warning" id="total-summary-card" style="margin-bottom: 1.25rem; padding: 1.25rem; background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(17, 24, 39, 0.8) 100%); border: 1px solid rgba(245, 158, 11, 0.2); box-shadow: 0 8px 32px rgba(245, 158, 11, 0.05);">
+        <!-- Top Row: Title, Date, Progress % -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
           <div>
             <div style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-warning); font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
               <i data-lucide="activity" style="width: 14px; height: 14px;"></i>
               <span>통합 작업 요약</span>
               <span id="summary-date-label" style="font-size: 0.75rem; font-weight: 500; opacity: 0.8;">(오늘 현재)</span>
             </div>
-            <h2 style="font-size: 2.0rem; font-weight: 800; color: #fff; margin-top: 0.25rem; display: flex; align-items: baseline; gap: 0.25rem; margin-bottom:0;">
+            <h2 style="font-size: 2.2rem; font-weight: 800; color: #fff; margin-top: 0.15rem; margin-bottom: 0; line-height: 1.1; display: flex; align-items: baseline; gap: 0.25rem;">
               <span id="total-percent">0%</span>
-              <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">완료됨</span>
+              <span style="font-size: 0.95rem; color: var(--text-muted); font-weight: 500;">완료됨</span>
             </h2>
           </div>
-          <div style="text-align: right;" id="total-counts-wrapper">
-            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.25rem;">실시간 성과 집계</div>
-            <strong style="font-size: 1.2rem; color: #fff;" id="total-counts">성공: 0 / 목표: 0 (남음: 0)</strong>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-wrapper" style="margin-bottom: 1rem; height: 8px;">
+          <div class="progress-bar" style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 99px;">
+            <div class="progress-fill" id="total-progress-fill" style="width: 0%; background: linear-gradient(90deg, var(--color-warning) 0%, #fbbf24 100%); height: 8px; border-radius: 99px; box-shadow: 0 0 12px var(--color-warning);"></div>
           </div>
         </div>
-        
-        <div class="progress-wrapper" style="margin-bottom: 0.25rem; height: 10px;">
-          <div class="progress-bar" style="background: rgba(255,255,255,0.05); height: 10px; border-radius: 99px;">
-            <div class="progress-fill" id="total-progress-fill" style="width: 0%; background: linear-gradient(90deg, var(--color-warning) 0%, #fbbf24 100%); height: 10px; border-radius: 99px; box-shadow: 0 0 12px var(--color-warning);"></div>
+
+        <!-- Key Metrics Cards Row -->
+        <div class="summary-metric-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem;">
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 8px; text-align: left;">
+            <div class="metric-label" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">성공 작업량</div>
+            <div class="metric-value" style="font-size: 1.25rem; font-weight: 800; color: #fff; margin-top: 0.15rem;" id="stat-success">0</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 8px; text-align: left;">
+            <div class="metric-label" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">목표 작업량</div>
+            <div class="metric-value" style="font-size: 1.25rem; font-weight: 800; color: #fff; margin-top: 0.15rem;" id="stat-target">0</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 8px; text-align: left;">
+            <div class="metric-label" style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">남은 작업량</div>
+            <div class="metric-value" style="font-size: 1.25rem; font-weight: 800; color: var(--color-warning); margin-top: 0.15rem;" id="stat-remain">0</div>
+          </div>
+          <div style="background: rgba(239, 68, 68, 0.04); border: 1px solid rgba(239, 68, 68, 0.15); padding: 0.5rem 0.75rem; border-radius: 8px; text-align: left; transition: all 0.2s;">
+            <div class="metric-label" style="font-size: 0.7rem; color: var(--color-danger); font-weight: 700;">불량 디바이스</div>
+            <div class="metric-value" style="font-size: 1.25rem; font-weight: 800; color: var(--color-danger); margin-top: 0.15rem;" id="stat-faulty">0대</div>
           </div>
         </div>
       </div>

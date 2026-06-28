@@ -1116,4 +1116,20 @@ main {
   .device-grid {
     grid-template-columns: 1fr !important;
   }
+
+  /* 11. Mobile Summary Hero Card metrics sizing */
+  .summary-metric-row {
+    gap: 0.4rem !important;
+  }
+  .summary-metric-row > div {
+    padding: 0.35rem 0.45rem !important;
+  }
+  .summary-metric-row .metric-value {
+    font-size: 0.95rem !important;
+  }
+  .summary-metric-row .metric-label {
+    font-size: 0.58rem !important;
+    white-space: nowrap !important;
+  }
 }
+

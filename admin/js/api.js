@@ -131,10 +131,31 @@ export function updateUI(data) {
   const totalPct = stats.total_target > 0 ? Math.round((stats.success / stats.total_target) * 100) : 0;
   const totalPctEl = document.getElementById("total-percent");
   const totalProgressFill = document.getElementById("total-progress-fill");
-  const totalCounts = document.getElementById("total-counts");
   if (totalPctEl) totalPctEl.innerText = `${totalPct}%`;
   if (totalProgressFill) totalProgressFill.style.width = `${Math.min(100, totalPct)}%`;
-  if (totalCounts) totalCounts.innerText = `성공: ${stats.success} / 전체 목표: ${stats.total_target} (남음: ${stats.remain})`;
+
+  // Bind new grid metric items
+  const statSuccess = document.getElementById("stat-success");
+  const statTarget = document.getElementById("stat-target");
+  const statRemain = document.getElementById("stat-remain");
+  const statFaulty = document.getElementById("stat-faulty");
+
+  const formatNum = (num) => (num || 0).toLocaleString();
+
+  if (statSuccess) statSuccess.innerText = formatNum(stats.success);
+  if (statTarget) statTarget.innerText = formatNum(stats.total_target);
+  if (statRemain) statRemain.innerText = formatNum(stats.remain);
+
+  // Compute faulty device count from data.devices
+  const devices = data.devices || [];
+  let faultyCount = 0;
+  devices.forEach(d => {
+    const isAlerting = d.status === 'ERROR' || (d.today_fail || 0) >= 5 || (d.status === 'ON' && d.silence_minutes >= 20);
+    if (isAlerting) {
+      faultyCount++;
+    }
+  });
+  if (statFaulty) statFaulty.innerText = `${faultyCount}대`;
 
   // 2. System Health Info
   const sys = data.system;
