@@ -261,7 +261,8 @@ async def get_admin_summary():
             
             # 6. Recent Successes (Last 50 with Memo)
             cursor.execute("""
-                SELECT l.dest_name, IFNULL(d.hostname, l.device_id) as device_memo, l.end_time as start_time 
+                SELECT l.dest_name, IFNULL(d.hostname, l.device_id) as device_memo, l.start_time, l.end_time, 
+                       IFNULL(NULLIF(l.client_time_s, 0), TIMESTAMPDIFF(SECOND, l.start_time, l.end_time)) as duration_sec 
                 FROM tasks_log l
                 LEFT JOIN devices d ON l.device_id = d.device_id
                 WHERE l.status='SUCCESS' 
