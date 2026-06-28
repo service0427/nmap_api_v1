@@ -1,13 +1,13 @@
-import { initRouting, switchTab } from './js/routing.js?v=1.1.12';
-import { initClock } from './js/clock.js?v=1.1.12';
-import { initGrids } from './js/grids.js?v=1.1.12';
-import { fetchData } from './js/api.js?v=1.1.12';
+import { initRouting, switchTab } from './js/routing.js?v=1.1.13';
+import { initClock } from './js/clock.js?v=1.1.13';
+import { initGrids } from './js/grids.js?v=1.1.13';
+import { fetchData } from './js/api.js?v=1.1.13';
 
 // Import other scripts to register global handlers on window automatically
-import './js/modals.js?v=1.1.12';
-import './js/devices.js?v=1.1.12';
-import './js/lte.js?v=1.1.12';
-import './js/destinations.js?v=1.1.12';
+import './js/modals.js?v=1.1.13';
+import './js/devices.js?v=1.1.13';
+import './js/lte.js?v=1.1.13';
+import './js/destinations.js?v=1.1.13';
 
 document.addEventListener("DOMContentLoaded", () => {
   // Initialize ag-Grids
