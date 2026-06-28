@@ -1,7 +1,7 @@
-import { state } from './state.js?v=1.1.14';
-import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js?v=1.1.14';
-import { filterLteCards } from './lte.js?v=1.1.14';
-import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js?v=1.1.14';
+import { state } from './state.js?v=1.1.15';
+import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js?v=1.1.15';
+import { filterLteCards } from './lte.js?v=1.1.15';
+import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js?v=1.1.15';
 
 // Fetch API Data
 export async function fetchData(manual = false) {
