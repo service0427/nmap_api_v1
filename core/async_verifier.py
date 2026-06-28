@@ -32,12 +32,12 @@ def run_async_verification():
                    OR (
                        r.id IS NOT NULL 
                        AND (p.check_status = 'FAIL' OR p.name = '' OR p.name LIKE 'FAILED_SCRAPE_%%' OR p.lat IS NULL OR p.lng IS NULL)
-                       AND (p.updated_at IS NULL OR p.updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE))
+                       AND (p.last_checked_at IS NULL OR p.last_checked_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE))
                    )
                    OR (
                        r.id IS NOT NULL
                        AND (dp.fail_cnt > 0 OR dp.mismatch_cnt > 0 OR dp.miss_cnt > 0)
-                       AND (p.updated_at IS NULL OR p.updated_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
+                       AND (p.last_checked_at IS NULL OR p.last_checked_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
                    )
                 ORDER BY p.check_status ASC, p.created_at ASC
             """, (get_kst_date(), get_kst_date()))
@@ -72,7 +72,7 @@ def run_async_verification():
                         UPDATE places 
                         SET name = %s, address = %s, original_address = %s, 
                             lat = %s, lng = %s, check_status = 'VERIFIED', is_optimizer = %s,
-                            fail_count = 0, updated_at = %s
+                            fail_count = 0, last_checked_at = %s
                         WHERE dest_id = %s
                     """, (name, address, original_address, lat, lng, is_opt, get_kst_now(), dest_id))
                     
@@ -93,13 +93,13 @@ def run_async_verification():
                     if curr_fail < 3:
                         cursor.execute("""
                             UPDATE places 
-                            SET fail_count = %s, updated_at = %s
+                            SET fail_count = %s, last_checked_at = %s
                             WHERE dest_id = %s
                         """, (curr_fail, get_kst_now(), dest_id))
                     else:
                         cursor.execute("""
                             UPDATE places 
-                            SET check_status = 'FAIL', fail_count = %s, name = %s, updated_at = %s
+                            SET check_status = 'FAIL', fail_count = %s, name = %s, last_checked_at = %s
                             WHERE dest_id = %s
                         """, (curr_fail, f"FAILED_SCRAPE_{dest_id}", get_kst_now(), dest_id))
                     

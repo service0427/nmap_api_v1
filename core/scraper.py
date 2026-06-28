@@ -122,10 +122,11 @@ class NaverPlaceScraper:
             res_poi = requests.get(poi_url, headers=poi_headers, timeout=10)
             if res_poi.status_code != 200:
                 return {"error": "poi_fail", "message": f"POI API 오류 ({res_poi.status_code})"}
-            
-            poi_data = res_poi.json().get("data", {}).get("placeDetail", {})
+            json_data = res_poi.json() or {}
+            data_obj = json_data.get("data") or {}
+            poi_data = data_obj.get("placeDetail") or {}
             name = poi_data.get("name")
-            addr = poi_data.get("address", {}).get("address")
+            addr = poi_data.get("address", {}).get("address") if poi_data.get("address") else None
             
             if not name:
                 return {"error": "no_name", "message": "장소 이름을 찾을 수 없음"}
