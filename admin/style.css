@@ -1137,5 +1137,70 @@ main {
     font-size: 0.58rem !important;
     white-space: nowrap !important;
   }
+
+  .hide-mobile {
+    display: none !important;
+  }
+
+  .date-selector-container {
+    margin-bottom: 0.4rem !important;
+  }
+
+  /* 12. Compact horizontal rows for site progress cards on mobile */
+  .summary-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.4rem !important;
+  }
+  .summary-grid .card {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 0.4rem 0.65rem !important;
+    border-radius: 8px !important;
+    height: auto !important;
+    gap: 0.65rem !important;
+  }
+  .summary-grid .card .card-header {
+    padding: 0 !important;
+    border-bottom: none !important;
+    width: 60px !important;
+    flex-shrink: 0 !important;
+    display: block !important;
+  }
+  .summary-grid .card .card-title {
+    font-size: 0.75rem !important;
+    font-weight: 800 !important;
+  }
+  .summary-grid .card .card-header span:nth-child(2) {
+    display: none !important;
+  }
+  .summary-grid .card .card-value {
+    font-size: 0.8rem !important;
+    font-weight: 800 !important;
+    width: 32px !important;
+    text-align: right !important;
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+  }
+  .summary-grid .card .progress-wrapper {
+    flex: 1 !important;
+    margin: 0 !important;
+  }
+  .summary-grid .card .progress-bar {
+    height: 6px !important;
+  }
+  .summary-grid .card .progress-fill {
+    height: 6px !important;
+  }
+  .summary-grid .card .card-meta {
+    font-size: 0.65rem !important;
+    margin-top: 0 !important;
+    width: 100px !important;
+    text-align: right !important;
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+  }
 }
 

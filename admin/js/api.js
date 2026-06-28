@@ -1,7 +1,7 @@
-import { state } from './state.js?v=1.1.11';
-import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js?v=1.1.11';
-import { filterLteCards } from './lte.js?v=1.1.11';
-import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js?v=1.1.11';
+import { state } from './state.js?v=1.1.12';
+import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js?v=1.1.12';
+import { filterLteCards } from './lte.js?v=1.1.12';
+import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js?v=1.1.12';
 
 // Fetch API Data
 export async function fetchData(manual = false) {
@@ -64,6 +64,14 @@ export function updateUI(data) {
   state.totalYesterdaySuccess = data.summary.total_yesterday_success || 0;
   state.pastDateStrs = data.summary.past_date_strs || [];
   
+  const isMobile = window.innerWidth < 768;
+  const formatCounts = (success, target, fail) => {
+    if (isMobile) {
+      return `${success.toLocaleString()}/${target.toLocaleString()} (실패 ${fail.toLocaleString()})`;
+    }
+    return `성공: ${success.toLocaleString()} / 목표: ${target.toLocaleString()} (실패: ${fail.toLocaleString()})`;
+  };
+
   // FSD
   const fsdPct = stats.fsd_target > 0 ? Math.round((stats.fsd_success / stats.fsd_target) * 100) : 0;
   const fsdPctEl = document.getElementById("fsd-percent");
@@ -71,7 +79,7 @@ export function updateUI(data) {
   const fsdCounts = document.getElementById("fsd-counts");
   if (fsdPctEl) fsdPctEl.innerText = `${fsdPct}%`;
   if (fsdProgressFill) fsdProgressFill.style.width = `${Math.min(100, fsdPct)}%`;
-  if (fsdCounts) fsdCounts.innerText = `목표: ${stats.fsd_target} | 성공: ${stats.fsd_success} | 실패: ${stats.fsd_fail}`;
+  if (fsdCounts) fsdCounts.innerText = formatCounts(stats.fsd_success, stats.fsd_target, stats.fsd_fail);
 
   // LUF
   const lufPct = stats.luf_target > 0 ? Math.round((stats.luf_success / stats.luf_target) * 100) : 0;
@@ -80,7 +88,7 @@ export function updateUI(data) {
   const lufCounts = document.getElementById("luf-counts");
   if (lufPctEl) lufPctEl.innerText = `${lufPct}%`;
   if (lufProgressFill) lufProgressFill.style.width = `${Math.min(100, lufPct)}%`;
-  if (lufCounts) lufCounts.innerText = `목표: ${stats.luf_target} | 성공: ${stats.luf_success} | 실패: ${stats.luf_fail}`;
+  if (lufCounts) lufCounts.innerText = formatCounts(stats.luf_success, stats.luf_target, stats.luf_fail);
 
   // TEST
   const testPct = stats.test_target > 0 ? Math.round((stats.test_success / stats.test_target) * 100) : 0;
@@ -89,7 +97,7 @@ export function updateUI(data) {
   const testCounts = document.getElementById("test-counts");
   if (testPctEl) testPctEl.innerText = `${testPct}%`;
   if (testProgressFill) testProgressFill.style.width = `${Math.min(100, testPct)}%`;
-  if (testCounts) testCounts.innerText = `목표: ${stats.test_target} | 성공: ${stats.test_success} | 실패: ${stats.test_fail}`;
+  if (testCounts) testCounts.innerText = formatCounts(stats.test_success, stats.test_target, stats.test_fail);
 
   // ssolup
   const ssolupPct = stats.ssolup_target > 0 ? Math.round((stats.ssolup_success / stats.ssolup_target) * 100) : 0;
@@ -98,7 +106,7 @@ export function updateUI(data) {
   const ssolupCounts = document.getElementById("ssolup-counts");
   if (ssolupPctEl) ssolupPctEl.innerText = `${ssolupPct}%`;
   if (ssolupProgressFill) ssolupProgressFill.style.width = `${Math.min(100, ssolupPct)}%`;
-  if (ssolupCounts) ssolupCounts.innerText = `목표: ${stats.ssolup_target} | 성공: ${stats.ssolup_success} | 실패: ${stats.ssolup_fail}`;
+  if (ssolupCounts) ssolupCounts.innerText = formatCounts(stats.ssolup_success, stats.ssolup_target, stats.ssolup_fail);
 
   // quixslot
   const quixslotPct = stats.quixslot_target > 0 ? Math.round((stats.quixslot_success / stats.quixslot_target) * 100) : 0;
@@ -107,7 +115,7 @@ export function updateUI(data) {
   const quixslotCounts = document.getElementById("quixslot-counts");
   if (quixslotPctEl) quixslotPctEl.innerText = `${quixslotPct}%`;
   if (quixslotProgressFill) quixslotProgressFill.style.width = `${Math.min(100, quixslotPct)}%`;
-  if (quixslotCounts) quixslotCounts.innerText = `목표: ${stats.quixslot_target} | 성공: ${stats.quixslot_success} | 실패: ${stats.quixslot_fail}`;
+  if (quixslotCounts) quixslotCounts.innerText = formatCounts(stats.quixslot_success, stats.quixslot_target, stats.quixslot_fail);
 
   // ghost
   const ghostPct = stats.ghost_target > 0 ? Math.round((stats.ghost_success / stats.ghost_target) * 100) : 0;
@@ -116,7 +124,7 @@ export function updateUI(data) {
   const ghostCounts = document.getElementById("ghost-counts");
   if (ghostPctEl) ghostPctEl.innerText = `${ghostPct}%`;
   if (ghostProgressFill) ghostProgressFill.style.width = `${Math.min(100, ghostPct)}%`;
-  if (ghostCounts) ghostCounts.innerText = `목표: ${stats.ghost_target} | 성공: ${stats.ghost_success} | 실패: ${stats.ghost_fail}`;
+  if (ghostCounts) ghostCounts.innerText = formatCounts(stats.ghost_success, stats.ghost_target, stats.ghost_fail);
 
   // rudolph
   const rudolphPct = stats.rudolph_target > 0 ? Math.round((stats.rudolph_success / stats.rudolph_target) * 100) : 0;
@@ -125,7 +133,7 @@ export function updateUI(data) {
   const rudolphCounts = document.getElementById("rudolph-counts");
   if (rudolphPctEl) rudolphPctEl.innerText = `${rudolphPct}%`;
   if (rudolphProgressFill) rudolphProgressFill.style.width = `${Math.min(100, rudolphPct)}%`;
-  if (rudolphCounts) rudolphCounts.innerText = `목표: ${stats.rudolph_target} | 성공: ${stats.rudolph_success} | 실패: ${stats.rudolph_fail}`;
+  if (rudolphCounts) rudolphCounts.innerText = formatCounts(stats.rudolph_success, stats.rudolph_target, stats.rudolph_fail);
 
   // Total Unified
   const totalPct = stats.total_target > 0 ? Math.round((stats.success / stats.total_target) * 100) : 0;
