@@ -44,10 +44,10 @@ export function initGrids() {
           return mapping[p.value] || `<span class="badge secondary">${p.value || '미점검'}</span>`;
         }
       },
-      { 
+       { 
         field: "slot_status", 
         headerName: "슬롯 상태", 
-        width: 110,
+        width: 100,
         cellRenderer: p => `
           <span class="badge ${p.value === 'on' ? 'success' : 'danger'}">
             ${p.value === 'on' ? '활성' : '비활성'}
@@ -57,32 +57,54 @@ export function initGrids() {
       { 
         field: "target", 
         headerName: "목표 할당량", 
-        width: 110,
+        width: 100,
         valueFormatter: p => p.value || 0
       },
       { 
-        headerName: "오늘 달성량", 
-        width: 220,
-        valueGetter: p => `${p.data.success || 0} / ${p.data.fail || 0}`,
+        field: "success", 
+        headerName: "오늘 성공", 
+        width: 100,
+        valueFormatter: p => p.value || 0
+      },
+      { 
+        field: "fail", 
+        headerName: "오늘 실패", 
+        width: 150,
         cellRenderer: p => {
-          const s = p.data.success || 0;
-          const f = p.data.fail || 0;
+          const f = p.value || 0;
           const miss = p.data.miss || 0;
           const timeout = p.data.timeout || 0;
           const mismatch = p.data.mismatch || 0;
-          
-          let failTooltip = `총 실패: ${f}건`;
           if (f > 0) {
-            failTooltip += `&#10;- 미노출(Miss): ${miss}건&#10;- 네트워크: ${timeout}건&#10;- 신원오류: ${mismatch}건`;
+            let tooltip = `미노출(Miss): ${miss}건 | 네트워크: ${timeout}건 | 신원오류: ${mismatch}건`;
+            return `<span class="badge danger" style="font-weight:700;" title="${tooltip}">${f} 실패 (M:${miss}|N:${timeout}|I:${mismatch})</span>`;
           }
-          
-          const detailsText = f > 0 ? ` (M:${miss}|N:${timeout}|I:${mismatch})` : '';
-          
-          return `
-            <span class="badge success" style="font-weight:700;">${s} 성공</span>
-            <span class="badge ${f > 0 ? 'danger' : 'warning'}" style="font-weight:700;" title="${failTooltip}">${f} 실패${detailsText}</span>
-          `;
+          return `<span class="badge warning" style="font-weight:700;">0 실패</span>`;
         }
+      },
+      { 
+        field: "y_success", 
+        headerName: "어제 성공", 
+        width: 100,
+        valueFormatter: p => p.value || 0
+      },
+      { 
+        field: "y_fail", 
+        headerName: "어제 실패", 
+        width: 100,
+        valueFormatter: p => p.value || 0
+      },
+      { 
+        field: "start_date", 
+        headerName: "시작일", 
+        width: 110,
+        valueFormatter: p => p.value ? p.value.substring(0, 10) : ''
+      },
+      { 
+        field: "end_date", 
+        headerName: "만료일", 
+        width: 110,
+        valueFormatter: p => p.value ? p.value.substring(0, 10) : ''
       }
     ],
     pagination: true,

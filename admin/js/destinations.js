@@ -99,8 +99,8 @@ export function filterDestinationsLocally(resetPage = false) {
                   ${checkStatusText}
                 </span>
               </div>
-              <span style="font-size:0.65rem; color:var(--text-muted); font-weight:600; background:rgba(255,255,255,0.03); padding:0.1rem 0.3rem; border-radius:3px;">
-                ${d.site_id || 'UNKNOWN'}
+              <span style="font-size:0.65rem; color:var(--text-muted); font-weight:600;">
+                기간: ${d.start_date ? d.start_date.substring(5, 10) : '-'} ~ ${d.end_date ? d.end_date.substring(5, 10) : '-'}
               </span>
             </div>
             
@@ -113,14 +113,15 @@ export function filterDestinationsLocally(resetPage = false) {
               <button class="badge secondary" style="cursor:pointer; padding: 0.15rem 0.4rem; font-size:0.65rem; border:1px solid var(--border-color);" onclick="window.copyToClipboard('${d.dest_id}', this)">ID 복사</button>
             </div>
             
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; border-top:1px solid rgba(255,255,255,0.03); padding-top:0.65rem; margin-bottom:0.65rem;">
+            <!-- 오늘 달성량 -->
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; border-top:1px solid rgba(255,255,255,0.03); padding-top:0.65rem; margin-bottom:0.4rem;">
               <div>
-                <span style="color:var(--text-muted);">달성/목표:</span>
+                <span style="color:var(--text-muted); font-weight:500;">오늘 달성:</span>
                 <span class="badge success" style="font-weight:800; font-size:0.75rem; padding:0.15rem 0.4rem; margin-left:0.25rem;">
                   ${d.success || 0} 성공
                 </span>
                 <span style="color:var(--text-muted); margin:0 0.15rem;">/</span>
-                <strong style="color:var(--text-primary); font-size:0.85rem;">${d.target || 0}</strong>
+                <strong style="color:var(--text-primary); font-size:0.85rem;">${d.target || 0} 목표</strong>
               </div>
               <div>
                 <span class="badge ${d.fail > 0 ? 'danger' : 'secondary'}" style="font-weight:700; font-size:0.65rem; padding:0.1rem 0.35rem;">
@@ -128,9 +129,20 @@ export function filterDestinationsLocally(resetPage = false) {
                 </span>
               </div>
             </div>
+
+            <!-- 어제 달성량 -->
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; margin-bottom:0.65rem; color:var(--text-muted);">
+              <div>
+                <span>어제 달성:</span>
+                <span style="color:var(--text-primary); font-weight:600; margin-left:0.25rem;">${d.y_success || 0} 성공</span>
+              </div>
+              <div>
+                <span>어제 실패: ${d.y_fail || 0}</span>
+              </div>
+            </div>
             
             <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.01); border:1px solid var(--border-color); padding:0.45rem 0.65rem; border-radius:6px;">
-              <span style="font-size:0.7rem; font-weight:600; color:var(--text-muted);">GPS 옵티마이저</span>
+              <span style="font-size:0.7rem; font-weight:600; color:var(--text-muted);">GPS 옵티마이저 (${d.site_id || 'UNKNOWN'})</span>
               <span class="badge ${d.is_optimizer ? 'success' : 'secondary'}" style="cursor:pointer; padding: 0.2rem 0.5rem; font-size:0.65rem; font-weight:700;" onclick="window.updateDestOptimizer('${d.dest_id}', ${d.is_optimizer ? 0 : 1})">
                 ${d.is_optimizer ? 'ON' : 'OFF'}
               </span>

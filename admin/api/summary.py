@@ -205,6 +205,7 @@ async def get_admin_summary():
                         d['silence_minutes'] = 9999
 
             # 4. Destinations (Detailed - all slots for today including status)
+            yesterday_date = kst_date - timedelta(days=1)
             is_deleted_where_expr = "AND rs.is_deleted = 0" if has_is_deleted else ""
             cursor.execute(f"""
                 SELECT 
@@ -215,23 +216,28 @@ async def get_admin_summary():
                     p.check_status,
                     p.dist_min_m,
                     p.dist_max_m,
+                    MIN(rs.start_date) as start_date,
+                    MAX(rs.end_date) as end_date,
                     SUM(rs.work_count) as target,
                     MAX(rs.status) as slot_status,
                     SUM(IFNULL(dp.success_cnt, 0)) as success,
                     SUM(IFNULL(dp.fail_cnt, 0)) as fail,
                     SUM(IFNULL(dp.miss_cnt, 0)) as miss,
                     SUM(IFNULL(dp.timeout_cnt, 0)) as timeout,
-                    SUM(IFNULL(dp.mismatch_cnt, 0)) as mismatch
+                    SUM(IFNULL(dp.mismatch_cnt, 0)) as mismatch,
+                    SUM(IFNULL(dp_y.success_cnt, 0)) as y_success,
+                    SUM(IFNULL(dp_y.fail_cnt, 0)) as y_fail
                 FROM raw_slots rs
                 JOIN places p ON rs.dest_id = p.dest_id
                 LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.sid = dp.sid AND dp.work_date = %s
+                LEFT JOIN daily_progress dp_y ON rs.site_id = dp_y.site_id AND rs.sid = dp_y.sid AND dp_y.work_date = %s
                 WHERE %s BETWEEN rs.start_date AND rs.end_date 
                   AND rs.site_id <> 'test' 
                   {is_deleted_where_expr}
                   AND rs.status = 'on'
                 GROUP BY rs.site_id, rs.dest_id, p.name, p.is_optimizer, p.check_status, p.dist_min_m, p.dist_max_m
                 ORDER BY rs.site_id ASC, rs.dest_id ASC
-            """, (kst_date, kst_date))
+            """, (kst_date, yesterday_date, kst_date))
             dest_list = cursor.fetchall()
 
             # 5. Live Alarms (Smart Anomaly Detection)
