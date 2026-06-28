@@ -195,6 +195,9 @@ export function filterDestinationsLocally(resetPage = false) {
 
     if (state.destinationsGridApi) {
       state.destinationsGridApi.setGridOption('rowData', filtered);
+      setTimeout(() => {
+        state.destinationsGridApi.sizeColumnsToFit();
+      }, 50);
     }
   }
 }
@@ -290,6 +293,9 @@ window.onDestSearch = () => {
 
 window.addEventListener('resize', () => {
   filterDestinationsLocally();
+  if (state.destinationsGridApi) {
+    state.destinationsGridApi.sizeColumnsToFit();
+  }
 });
 
 // Bind to window for HTML event handling

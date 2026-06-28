@@ -432,6 +432,9 @@ function renderTableView(filteredDevices) {
 
   if (state.devicesGridApi) {
     state.devicesGridApi.setGridOption('rowData', filteredDevices);
+    setTimeout(() => {
+      state.devicesGridApi.sizeColumnsToFit();
+    }, 50);
     return;
   }
 
@@ -550,7 +553,16 @@ function renderTableView(filteredDevices) {
   };
 
   state.devicesGridApi = agGrid.createGrid(gridDiv, gridOptions);
+  setTimeout(() => {
+    state.devicesGridApi.sizeColumnsToFit();
+  }, 50);
 }
+
+window.addEventListener('resize', () => {
+  if (state.devicesGridApi) {
+    state.devicesGridApi.sizeColumnsToFit();
+  }
+});
 
 export function toggleAccordion(groupName) {
   const body = document.getElementById(`group-body-${groupName}`);

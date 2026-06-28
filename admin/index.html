@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/style.css">
   
   <!-- Premium Modular Javascript Applications Entry Point -->
-  <script type="module" src="/app.js?v=1.1.8"></script>
+  <script type="module" src="/app.js?v=1.1.9"></script>
 </head>
 <body>
 
@@ -64,6 +64,33 @@
         <button class="date-tab-btn" id="btn-date-yesterday" onclick="window.switchDate('yesterday')">어제</button>
         <button class="date-tab-btn active" id="btn-date-today" onclick="window.switchDate('today')">★ 오늘 현재</button>
         <button class="date-tab-btn" id="btn-date-tomorrow" onclick="window.switchDate('tomorrow')">내일</button>
+      </div>
+
+      <!-- Overall Summary Hero Section (Full Width) -->
+      <div class="card warning" id="total-summary-card" style="margin-bottom: 1.25rem; padding: 1.5rem; background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(17, 24, 39, 0.8) 100%); border: 1px solid rgba(245, 158, 11, 0.2); box-shadow: 0 8px 32px rgba(245, 158, 11, 0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+          <div>
+            <div style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-warning); font-weight: 700; display: flex; align-items: center; gap: 0.5rem;">
+              <i data-lucide="activity" style="width: 14px; height: 14px;"></i>
+              <span>통합 작업 요약</span>
+              <span id="summary-date-label" style="font-size: 0.75rem; font-weight: 500; opacity: 0.8;">(오늘 현재)</span>
+            </div>
+            <h2 style="font-size: 2.0rem; font-weight: 800; color: #fff; margin-top: 0.25rem; display: flex; align-items: baseline; gap: 0.25rem; margin-bottom:0;">
+              <span id="total-percent">0%</span>
+              <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">완료됨</span>
+            </h2>
+          </div>
+          <div style="text-align: right;" id="total-counts-wrapper">
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; margin-bottom: 0.25rem;">실시간 성과 집계</div>
+            <strong style="font-size: 1.2rem; color: #fff;" id="total-counts">성공: 0 / 목표: 0 (남음: 0)</strong>
+          </div>
+        </div>
+        
+        <div class="progress-wrapper" style="margin-bottom: 0.25rem; height: 10px;">
+          <div class="progress-bar" style="background: rgba(255,255,255,0.05); height: 10px; border-radius: 99px;">
+            <div class="progress-fill" id="total-progress-fill" style="width: 0%; background: linear-gradient(90deg, var(--color-warning) 0%, #fbbf24 100%); height: 10px; border-radius: 99px; box-shadow: 0 0 12px var(--color-warning);"></div>
+          </div>
+        </div>
       </div>
 
       <!-- FSD, LUF, Test, Total Status Cards -->
@@ -187,22 +214,7 @@
           </div>
         </div>
 
-        <!-- Overall Summary Card -->
-        <div class="card warning" id="total-summary-card">
-          <div class="card-header">
-            <span class="card-title">통합 작업 요약<span id="summary-date-label" style="font-size:0.75rem; font-weight:bold; color:var(--color-warning);"> (오늘 현재)</span></span>
-            <span style="font-size:0.75rem; color:var(--color-warning); font-weight:700;">통합</span>
-          </div>
-          <div class="card-value" id="total-percent">0%</div>
-          <div class="progress-wrapper">
-            <div class="progress-bar">
-              <div class="progress-fill" id="total-progress-fill" style="width: 0%; background-color: var(--color-warning);"></div>
-            </div>
-          </div>
-          <div class="card-meta">
-            <span id="total-counts">성공: 0 / 목표: 0 (남음: 0)</span>
-          </div>
-        </div>
+
       </div>
 
       <!-- Dashboard Second Row: Server state, Success feed -->
