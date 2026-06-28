@@ -131,8 +131,8 @@ def refill_pool():
                 # 2. Generate coordinates and verify with Naver Map search
                 if needed > 0:
                     inserted_cnt = 0
-                    keywords = get_keywords_for_place(cursor, dest_id, row['name'])
-                    primary_kw = keywords[0] if keywords else row['name']
+                    # Always search by the place's real business name (상호) to verify coordinates
+                    primary_kw = row['name']
                     
                     attempts = 0
                     max_attempts = needed * 3
@@ -185,6 +185,25 @@ def refill_pool():
                         except Exception as e:
                             print(f"    [Pool Refiller] Warning: Failed to fetch search details: {e}")
                             time.sleep(0.1)
+                    
+                    # Fallback: If we couldn't find enough verified coordinates, force-generate at minimum distance
+                    if inserted_cnt < needed:
+                        fallback_needed = needed - inserted_cnt
+                        print(f"  [{row['name']}] Verified pool generation fell short. Force-generating {fallback_needed} fallback coordinates...")
+                        for _ in range(fallback_needed):
+                            # Generate at a safe close range (dist_min to dist_min + 100)
+                            s_lat, s_lng, real_d, _ = calculate_gps_and_speed(lat, lng, dist_min, min(dist_max, dist_min + 100), 0, 0, fixed_arrival_s=600)
+                            cursor.execute("""
+                                INSERT INTO task_position_pool (
+                                    dest_id, lat, lng, dist_m, is_used, created_date,
+                                    keyword, total_place_count, autocomplete_count, actual_rank
+                                )
+                                VALUES (%s, %s, %s, %s, 0, %s, %s, 0, 0, -1)
+                            """, (
+                                dest_id, s_lat, s_lng, int(real_d), kst_date,
+                                primary_kw
+                            ))
+                            inserted_cnt += 1
                             
                     print(f"  [{row['name']}] Generated & verified {inserted_cnt} coordinates (attempts: {attempts}) in range {dist_min}m ~ {dist_max}m.")
                     

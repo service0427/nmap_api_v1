@@ -65,8 +65,12 @@ async def request_task(req: TaskRequest, request: Request):
                     ip_allocated_ids = set()
 
                 is_only_opt = bool(req.only_optimizer)
-                opt_condition = "AND p.is_optimizer = 1" if is_only_opt else "AND p.is_optimizer = 0"
-                status_condition = "AND p.check_status IN ('VERIFIED', 'NORMAL', 'FAIL')" if is_only_opt else "AND p.check_status IN ('VERIFIED', 'NORMAL')"
+                if is_only_opt:
+                    opt_condition = "AND p.is_optimizer = 1"
+                    status_condition = "AND p.check_status IN ('VERIFIED', 'NORMAL', 'FAIL')"
+                else:
+                    opt_condition = "AND ((p.is_optimizer = 0 AND p.check_status IN ('VERIFIED', 'NORMAL')) OR (p.is_optimizer = 1 AND p.check_status IN ('VERIFIED', 'NORMAL', 'FAIL')))"
+                    status_condition = ""
                 
                 base_query = f"""
                     SELECT 
