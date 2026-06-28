@@ -88,6 +88,7 @@ async def request_task(req: TaskRequest, request: Request):
                       AND %s BETWEEN r.start_date AND r.end_date
                       AND r.status = 'on'
                       AND r.is_deleted = 0
+                      AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
                       {status_condition}
                       {opt_condition}
                 """
@@ -203,6 +204,7 @@ async def request_task(req: TaskRequest, request: Request):
                           AND %s BETWEEN r.start_date AND r.end_date
                           AND r.status = 'on'
                           AND r.is_deleted = 0
+                          AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
                           AND dp.fail_cnt < 10
                           {status_condition}
                           {opt_condition}
