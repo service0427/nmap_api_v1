@@ -4,7 +4,8 @@ export function initGrids() {
   // 1. Destinations Grid
   const destinationsGridOptions = {
     columnDefs: [
-      { field: "site_id", headerName: "사이트", width: 110, filter: true },
+      { field: "site_id", headerName: "사이트", width: 100, filter: true },
+      { field: "name", headerName: "상호", width: 220, filter: true },
       { 
         field: "dest_id", 
         headerName: "목적지 ID", 
@@ -19,45 +20,10 @@ export function initGrids() {
           </div>
         `
       },
-      { field: "name", headerName: "상호", width: 220, filter: true },
-      { 
-        field: "is_optimizer", 
-        headerName: "옵티마이저", 
-        width: 110,
-        cellRenderer: p => `
-          <span class="badge ${p.value ? 'success' : 'secondary'}" style="cursor:pointer; padding: 0.15rem 0.4rem;" onclick="window.updateDestOptimizer('${p.data.dest_id}', ${p.value ? 0 : 1})" title="클릭하여 옵티마이저 토글">
-            ${p.value ? 'ON' : 'OFF'}
-          </span>
-        `
-      },
-      { 
-        field: "check_status", 
-        headerName: "상태", 
-        width: 110,
-        cellRenderer: p => {
-          const mapping = {
-            'VERIFIED': '<span class="badge success">검증 완료</span>',
-            'NORMAL': '<span class="badge info">일반</span>',
-            'PENDING': '<span class="badge warning">대기</span>',
-            'FAIL': '<span class="badge danger">실패</span>'
-          };
-          return mapping[p.value] || `<span class="badge secondary">${p.value || '미점검'}</span>`;
-        }
-      },
-       { 
-        field: "slot_status", 
-        headerName: "슬롯 상태", 
-        width: 100,
-        cellRenderer: p => `
-          <span class="badge ${p.value === 'on' ? 'success' : 'danger'}">
-            ${p.value === 'on' ? '활성' : '비활성'}
-          </span>
-        `
-      },
       { 
         field: "target", 
         headerName: "목표 할당량", 
-        width: 100,
+        width: 110,
         valueFormatter: p => p.value || 0
       },
       { 
@@ -79,7 +45,24 @@ export function initGrids() {
             let tooltip = `미노출(Miss): ${miss}건 | 네트워크: ${timeout}건 | 신원오류: ${mismatch}건`;
             return `<span class="badge danger" style="font-weight:700;" title="${tooltip}">${f} 실패 (M:${miss}|N:${timeout}|I:${mismatch})</span>`;
           }
-          return `<span class="badge warning" style="font-weight:700;">0 실패</span>`;
+          return `<span style="color:var(--text-muted); font-weight:500;">0</span>`;
+        }
+      },
+      { 
+        headerName: "달성률", 
+        width: 100,
+        valueGetter: p => {
+          const target = p.data.target || 0;
+          const success = p.data.success || 0;
+          if (target === 0) return "0.0%";
+          return ((success / target) * 100).toFixed(1) + "%";
+        },
+        cellRenderer: p => {
+          const target = p.data.target || 0;
+          const success = p.data.success || 0;
+          const pct = target > 0 ? (success / target) * 100 : 0;
+          const color = pct >= 100 ? 'success' : (pct > 0 ? 'info' : 'secondary');
+          return `<span class="badge ${color}" style="font-weight:700;">${pct.toFixed(1)}%</span>`;
         }
       },
       { 
@@ -95,16 +78,14 @@ export function initGrids() {
         valueFormatter: p => p.value || 0
       },
       { 
-        field: "start_date", 
-        headerName: "시작일", 
+        field: "is_optimizer", 
+        headerName: "옵티마이저", 
         width: 110,
-        valueFormatter: p => p.value ? p.value.substring(0, 10) : ''
-      },
-      { 
-        field: "end_date", 
-        headerName: "만료일", 
-        width: 110,
-        valueFormatter: p => p.value ? p.value.substring(0, 10) : ''
+        cellRenderer: p => `
+          <span class="badge ${p.value ? 'success' : 'secondary'}" style="cursor:pointer; padding: 0.15rem 0.4rem;" onclick="window.updateDestOptimizer('${p.data.dest_id}', ${p.value ? 0 : 1})" title="클릭하여 옵티마이저 토글">
+            ${p.value ? 'ON' : 'OFF'}
+          </span>
+        `
       }
     ],
     pagination: true,

@@ -14,8 +14,39 @@ export function filterDestinationsLocally(resetPage = false) {
   const mobileListEl = document.getElementById("mobile-destinations-list");
   const mobilePagerEl = document.getElementById("mobile-destinations-pagination");
 
+  // 1. Calculate Workload Summary Statistics for the active date
+  const rawDests = state.rawDestinations || [];
+  let totalTarget = 0;
+  let totalSuccess = 0;
+  let totalFail = 0;
+  
+  for (const d of rawDests) {
+    totalTarget += (d.target || 0);
+    totalSuccess += (d.success || 0);
+    totalFail += (d.fail || 0);
+  }
+  
+  const rate = totalTarget > 0 ? ((totalSuccess / totalTarget) * 100).toFixed(1) : '0.0';
+
+  const summaryDateEl = document.getElementById("dest-summary-date");
+  const summaryTargetEl = document.getElementById("dest-summary-target");
+  const summarySuccessEl = document.getElementById("dest-summary-success");
+  const summaryFailEl = document.getElementById("dest-summary-fail");
+  const summaryRateEl = document.getElementById("dest-summary-rate");
+
+  if (summaryDateEl) {
+    const selDate = state.selectedDestinationDate || (state.lastApiData && state.lastApiData.system.kst_time ? state.lastApiData.system.kst_time.substring(0, 10) : '오늘');
+    const isToday = state.lastApiData && state.lastApiData.system.kst_time && state.lastApiData.system.kst_time.substring(0, 10) === selDate;
+    summaryDateEl.innerText = `${selDate} ${isToday ? '(오늘)' : ''}`;
+  }
+  if (summaryTargetEl) summaryTargetEl.innerText = `${totalTarget.toLocaleString()}건`;
+  if (summarySuccessEl) summarySuccessEl.innerText = `${totalSuccess.toLocaleString()}건`;
+  if (summaryFailEl) summaryFailEl.innerText = `${totalFail.toLocaleString()}건`;
+  if (summaryRateEl) summaryRateEl.innerText = `${rate}%`;
+
+  // 2. Populate Site Filter Select option dropdown dynamically
   if (siteSelect) {
-    const uniqueSites = [...new Set(state.rawDestinations.map(d => (d.site_id || '').toUpperCase()).filter(Boolean))].sort();
+    const uniqueSites = [...new Set(rawDests.map(d => (d.site_id || '').toUpperCase()).filter(Boolean))].sort();
     const existingOptions = Array.from(siteSelect.options).map(o => o.value).filter(v => v !== "all").sort();
     const isSame = uniqueSites.length === existingOptions.length && uniqueSites.every((v, i) => v === existingOptions[i]);
     
@@ -36,6 +67,7 @@ export function filterDestinationsLocally(resetPage = false) {
     }
   }
 
+  // 3. Filter Destinations locally by search and site filter
   const search = searchInput ? searchInput.value.toLowerCase() : "";
   const siteFilter = siteSelect ? siteSelect.value : "all";
   
@@ -43,7 +75,7 @@ export function filterDestinationsLocally(resetPage = false) {
     mobilePage = 1;
   }
 
-  const filtered = state.rawDestinations.filter(d => {
+  const filtered = rawDests.filter(d => {
     const matchesSearch = 
       (d.dest_id || '').toLowerCase().includes(search) || 
       (d.name || '').toLowerCase().includes(search);
@@ -58,7 +90,7 @@ export function filterDestinationsLocally(resetPage = false) {
   const isMobile = window.innerWidth < 768;
 
   if (isMobile) {
-    // Hide AG Grid, show mobile layout
+    // Hide AG Grid, show mobile card list layout
     if (gridEl) gridEl.style.display = "none";
     if (mobileListEl) mobileListEl.style.display = "block";
     if (mobilePagerEl) mobilePagerEl.style.display = "flex";
@@ -82,25 +114,18 @@ export function filterDestinationsLocally(resetPage = false) {
           card.style.marginBottom = "0.75rem";
           card.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
 
-          const checkBadgeClass = d.check_status === 'VERIFIED' ? 'success' : 
-                                  (d.check_status === 'NORMAL' ? 'info' : 
-                                  (d.check_status === 'PENDING' ? 'warning' : 'danger'));
-          const checkStatusText = d.check_status === 'VERIFIED' ? '검증 완료' :
-                                  (d.check_status === 'NORMAL' ? '일반' :
-                                  (d.check_status === 'PENDING' ? '대기' : (d.check_status || '실패')));
+          const target = d.target || 0;
+          const success = d.success || 0;
+          const pct = target > 0 ? (success / target) * 100 : 0;
+          const pctColor = pct >= 100 ? 'var(--success-color)' : (pct > 0 ? 'var(--info-color)' : 'var(--text-muted)');
 
           card.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.4rem;">
-              <div style="display:flex; align-items:center; gap:0.25rem;">
-                <span class="badge ${d.slot_status === 'on' ? 'success' : 'danger'}" style="font-size:0.65rem; padding:0.1rem 0.35rem;">
-                  ${d.slot_status === 'on' ? '활성' : '비활성'}
-                </span>
-                <span class="badge ${checkBadgeClass}" style="font-size:0.65rem; padding:0.1rem 0.35rem;">
-                  ${checkStatusText}
-                </span>
-              </div>
-              <span style="font-size:0.65rem; color:var(--text-muted); font-weight:600;">
-                기간: ${d.start_date ? d.start_date.substring(5, 10) : '-'} ~ ${d.end_date ? d.end_date.substring(5, 10) : '-'}
+              <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700;">
+                ${d.site_id || 'UNKNOWN'}
+              </span>
+              <span class="badge ${d.is_optimizer ? 'success' : 'secondary'}" style="cursor:pointer; padding: 0.15rem 0.4rem; font-size:0.65rem;" onclick="window.updateDestOptimizer('${d.dest_id}', ${d.is_optimizer ? 0 : 1})">
+                옵티마이저: ${d.is_optimizer ? 'ON' : 'OFF'}
               </span>
             </div>
             
@@ -113,10 +138,10 @@ export function filterDestinationsLocally(resetPage = false) {
               <button class="badge secondary" style="cursor:pointer; padding: 0.15rem 0.4rem; font-size:0.65rem; border:1px solid var(--border-color);" onclick="window.copyToClipboard('${d.dest_id}', this)">ID 복사</button>
             </div>
             
-            <!-- 오늘 달성량 -->
+            <!-- 오늘 달성량 & 달성률 -->
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; border-top:1px solid rgba(255,255,255,0.03); padding-top:0.65rem; margin-bottom:0.4rem;">
               <div>
-                <span style="color:var(--text-muted); font-weight:500;">오늘 달성:</span>
+                <span style="color:var(--text-muted); font-weight:500;">오늘 성공:</span>
                 <span class="badge success" style="font-weight:800; font-size:0.75rem; padding:0.15rem 0.4rem; margin-left:0.25rem;">
                   ${d.success || 0} 성공
                 </span>
@@ -124,28 +149,22 @@ export function filterDestinationsLocally(resetPage = false) {
                 <strong style="color:var(--text-primary); font-size:0.85rem;">${d.target || 0} 목표</strong>
               </div>
               <div>
-                <span class="badge ${d.fail > 0 ? 'danger' : 'secondary'}" style="font-weight:700; font-size:0.65rem; padding:0.1rem 0.35rem;">
-                  실패: ${d.fail || 0}
+                <span style="font-weight:800; color:${pctColor}; font-size:0.9rem;">
+                  ${pct.toFixed(1)}%
                 </span>
               </div>
             </div>
 
-            <!-- 어제 달성량 -->
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; margin-bottom:0.65rem; color:var(--text-muted);">
-              <div>
-                <span>어제 달성:</span>
-                <span style="color:var(--text-primary); font-weight:600; margin-left:0.25rem;">${d.y_success || 0} 성공</span>
-              </div>
-              <div>
-                <span>어제 실패: ${d.y_fail || 0}</span>
-              </div>
+            <!-- 오늘 실패 수 (텍스트로 깔끔히) -->
+            <div style="font-size:0.75rem; margin-bottom:0.4rem; color:var(--text-muted);">
+              오늘 실패: <span style="font-weight:600; color:${d.fail > 0 ? 'var(--danger-color)' : 'var(--text-primary)'};">${d.fail || 0}</span>
+              ${d.fail > 0 ? ` (미노출:${d.miss || 0}|넷:${d.timeout || 0}|신원:${d.mismatch || 0})` : ''}
             </div>
-            
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.01); border:1px solid var(--border-color); padding:0.45rem 0.65rem; border-radius:6px;">
-              <span style="font-size:0.7rem; font-weight:600; color:var(--text-muted);">GPS 옵티마이저 (${d.site_id || 'UNKNOWN'})</span>
-              <span class="badge ${d.is_optimizer ? 'success' : 'secondary'}" style="cursor:pointer; padding: 0.2rem 0.5rem; font-size:0.65rem; font-weight:700;" onclick="window.updateDestOptimizer('${d.dest_id}', ${d.is_optimizer ? 0 : 1})">
-                ${d.is_optimizer ? 'ON' : 'OFF'}
-              </span>
+
+            <!-- 어제 달성량 -->
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:var(--text-muted); border-top:1px dashed rgba(255,255,255,0.03); padding-top:0.45rem;">
+              <span>어제 성공: <strong style="color:var(--text-primary);">${d.y_success || 0}</strong></span>
+              <span>어제 실패: <strong style="color:var(--text-primary);">${d.y_fail || 0}</strong></span>
             </div>
           `;
           mobileListEl.appendChild(card);
@@ -172,6 +191,81 @@ export function filterDestinationsLocally(resetPage = false) {
   }
 }
 
+// Render Date selector buttons dynamically
+export function renderDestDateButtons(serverTodayStr) {
+  const container = document.getElementById("dest-date-buttons");
+  if (!container) return;
+  
+  if (container.children.length === 15) {
+    // Already rendered. Just toggle active states to prevent button flicker redraw.
+    const selDate = state.selectedDestinationDate || serverTodayStr;
+    container.querySelectorAll(".date-tab-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.getAttribute("data-date") === selDate);
+    });
+    return;
+  }
+
+  container.innerHTML = "";
+  
+  const baseDate = new Date(serverTodayStr + "T00:00:00");
+  const dates = [];
+  
+  for (let i = -7; i <= 7; i++) {
+    const d = new Date(baseDate.getTime());
+    d.setDate(baseDate.getDate() + i);
+    
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const dateVal = String(d.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${dateVal}`;
+    dates.push(dateStr);
+  }
+  
+  dates.forEach(dateStr => {
+    const btn = document.createElement("button");
+    btn.className = "date-tab-btn";
+    btn.setAttribute("data-date", dateStr);
+    
+    const isSelected = state.selectedDestinationDate ? (state.selectedDestinationDate === dateStr) : (dateStr === serverTodayStr);
+    if (isSelected) {
+      btn.classList.add("active");
+    }
+    
+    let label = dateStr.substring(5); // MM-DD
+    if (dateStr === serverTodayStr) {
+      label = "오늘";
+    } else {
+      const yesterday = new Date(baseDate.getTime());
+      yesterday.setDate(baseDate.getDate() - 1);
+      const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
+      
+      const tomorrow = new Date(baseDate.getTime());
+      tomorrow.setDate(baseDate.getDate() + 1);
+      const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
+      
+      if (dateStr === yesterdayStr) {
+        label = "어제";
+      } else if (dateStr === tomorrowStr) {
+        label = "내일";
+      }
+    }
+    
+    btn.innerText = label;
+    btn.title = dateStr;
+    
+    btn.onclick = async () => {
+      state.selectedDestinationDate = dateStr;
+      container.querySelectorAll(".date-tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      
+      // Fetch data for the newly selected date
+      await window.fetchData(true);
+    };
+    
+    container.appendChild(btn);
+  });
+}
+
 window.changeMobileDestPage = (diff) => {
   mobilePage = Math.max(1, mobilePage + diff);
   filterDestinationsLocally();
@@ -187,3 +281,4 @@ window.addEventListener('resize', () => {
 
 // Bind to window for HTML event handling
 window.filterDestinationsLocally = filterDestinationsLocally;
+window.renderDestDateButtons = renderDestDateButtons;

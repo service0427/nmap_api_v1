@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js';
 import { filterLteCards } from './lte.js';
-import { filterDestinationsLocally } from './destinations.js';
+import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js';
 
 // Fetch API Data
 export async function fetchData(manual = false) {
@@ -14,7 +14,8 @@ export async function fetchData(manual = false) {
   }
   
   try {
-    const res = await fetch("/api/v1/admin/summary");
+    const url = state.selectedDestinationDate ? `/api/v1/admin/summary?date=${state.selectedDestinationDate}` : "/api/v1/admin/summary";
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
     const data = await res.json();
     
@@ -247,6 +248,8 @@ export function updateUI(data) {
   
   // Store destinations globally for manual input filtering
   state.rawDestinations = data.destinations || [];
+  const serverTodayStr = data.system && data.system.kst_time ? data.system.kst_time.substring(0, 10) : new Date().toISOString().substring(0, 10);
+  renderDestDateButtons(serverTodayStr);
   filterDestinationsLocally();
   
   if (window.lucide) {

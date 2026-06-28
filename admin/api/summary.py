@@ -110,8 +110,15 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
     }
 
 @router.get("/api/v1/admin/summary")
-async def get_admin_summary():
+async def get_admin_summary(date: str = None):
     kst_now, kst_date = get_kst_now(), get_kst_date()
+    query_date = kst_date
+    if date:
+        try:
+            from datetime import datetime
+            query_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except Exception:
+            pass
     has_is_deleted = check_is_deleted_support()
     try:
         with get_db_cursor() as cursor:
@@ -205,7 +212,7 @@ async def get_admin_summary():
                         d['silence_minutes'] = 9999
 
             # 4. Destinations (Detailed - all slots for today including status)
-            yesterday_date = kst_date - timedelta(days=1)
+            yesterday_date = query_date - timedelta(days=1)
             is_deleted_where_expr = "AND rs.is_deleted = 0" if has_is_deleted else ""
             cursor.execute(f"""
                 SELECT 
@@ -237,7 +244,7 @@ async def get_admin_summary():
                   AND rs.status = 'on'
                 GROUP BY rs.site_id, rs.dest_id, p.name, p.is_optimizer, p.check_status, p.dist_min_m, p.dist_max_m
                 ORDER BY rs.site_id ASC, rs.dest_id ASC
-            """, (kst_date, yesterday_date, kst_date))
+            """, (query_date, yesterday_date, query_date))
             dest_list = cursor.fetchall()
 
             # 5. Live Alarms (Smart Anomaly Detection)
