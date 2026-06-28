@@ -1,7 +1,7 @@
-import { state } from './state.js?v=1.1.13';
-import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js?v=1.1.13';
-import { filterLteCards } from './lte.js?v=1.1.13';
-import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js?v=1.1.13';
+import { state } from './state.js?v=1.1.14';
+import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js?v=1.1.14';
+import { filterLteCards } from './lte.js?v=1.1.14';
+import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js?v=1.1.14';
 
 // Fetch API Data
 export async function fetchData(manual = false) {
@@ -67,7 +67,7 @@ export function updateUI(data) {
   const isMobile = window.innerWidth < 768;
   const formatCounts = (success, target, fail) => {
     if (isMobile) {
-      return `${success.toLocaleString()}/${target.toLocaleString()} (실패 ${fail.toLocaleString()})`;
+      return `${success.toLocaleString()}/${target.toLocaleString()}`;
     }
     return `성공: ${success.toLocaleString()} / 목표: ${target.toLocaleString()} (실패: ${fail.toLocaleString()})`;
   };
