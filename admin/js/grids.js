@@ -12,7 +12,19 @@ export function initGrids() {
         sortable: false
       },
       { field: "site_id", headerName: "사이트", width: 100, filter: true },
-      { field: "name", headerName: "상호", width: 220, filter: true },
+      { 
+        field: "name", 
+        headerName: "상호", 
+        width: 220, 
+        filter: true,
+        cellRenderer: p => {
+          const name = p.value || '';
+          if (name.startsWith('FAILED_SCRAPE_') || p.data.check_status === 'FAIL') {
+            return `<span class="badge danger" style="font-weight:800; font-size:0.75rem; padding:0.15rem 0.35rem; margin-right:0.3rem;">[지도 삭제/폐업]</span><span style="color:var(--danger-color); font-weight:700;">${name}</span>`;
+          }
+          return name;
+        }
+      },
       { 
         field: "dest_id", 
         headerName: "목적지 ID", 
