@@ -308,15 +308,18 @@ def sync_legacy_lte_usage(modem_name: str, upload: int, download: int):
         print(f"[Sync Error] sync_legacy_lte_usage failed: {e}")
 
 def format_address(addr: Optional[str]) -> Optional[str]:
-    """
-    주소 가공: 첫 번째 단어(시/도)만 제거하여 매칭률 향상.
-    예: '서울특별시 동작구 상도로' -> '동작구 상도로'
-    """
+    import re
     if not addr: return addr
     parts = addr.strip().split(' ')
-    if len(parts) > 1:
-        return ' '.join(parts[1:]).strip()
-    return addr.strip()
+    if len(parts) <= 1:
+        return addr.strip()
+    clean_parts = parts[1:]
+    cutoff_index = len(clean_parts)
+    for idx, part in enumerate(clean_parts):
+        if re.match(r'^\d+(-\d+)?$', part):
+            cutoff_index = idx + 1
+            break
+    return ' '.join(clean_parts[:cutoff_index]).strip()
 
 app = FastAPI(title="Nmap Production API v1")
 
