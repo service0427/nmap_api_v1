@@ -644,6 +644,12 @@ main {
   height: calc(100vh - 335px) !important;
 }
 
+@media (max-width: 767px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
 /* ag-Grid Custom Dark Styles */
 .ag-theme-quartz-dark {
   --ag-background-color: var(--bg-card);

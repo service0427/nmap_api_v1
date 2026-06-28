@@ -205,8 +205,11 @@ export function renderDestDateButtons(serverTodayStr) {
   const container = document.getElementById("dest-date-buttons");
   if (!container) return;
   
-  if (container.children.length === 15) {
-    // Already rendered. Just toggle active states to prevent button flicker redraw.
+  const isMobile = window.innerWidth < 768;
+  const expectedCount = isMobile ? 3 : 15;
+  
+  if (container.children.length === expectedCount) {
+    // Already rendered correctly. Just toggle active states to prevent button flicker redraw.
     const selDate = state.selectedDestinationDate || serverTodayStr;
     container.querySelectorAll(".date-tab-btn").forEach(btn => {
       btn.classList.toggle("active", btn.getAttribute("data-date") === selDate);
@@ -217,17 +220,29 @@ export function renderDestDateButtons(serverTodayStr) {
   container.innerHTML = "";
   
   const baseDate = new Date(serverTodayStr + "T00:00:00");
-  const dates = [];
   
-  for (let i = -7; i <= 7; i++) {
-    const d = new Date(baseDate.getTime());
-    d.setDate(baseDate.getDate() + i);
-    
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const dateVal = String(d.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${dateVal}`;
-    dates.push(dateStr);
+  const yesterday = new Date(baseDate.getTime());
+  yesterday.setDate(baseDate.getDate() - 1);
+  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
+  
+  const tomorrow = new Date(baseDate.getTime());
+  tomorrow.setDate(baseDate.getDate() + 1);
+  const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
+
+  const dates = [];
+  if (isMobile) {
+    dates.push(yesterdayStr, serverTodayStr, tomorrowStr);
+  } else {
+    for (let i = -7; i <= 7; i++) {
+      const d = new Date(baseDate.getTime());
+      d.setDate(baseDate.getDate() + i);
+      
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const dateVal = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${dateVal}`;
+      dates.push(dateStr);
+    }
   }
   
   dates.forEach(dateStr => {
@@ -243,20 +258,10 @@ export function renderDestDateButtons(serverTodayStr) {
     let label = dateStr.substring(5); // MM-DD
     if (dateStr === serverTodayStr) {
       label = "오늘";
-    } else {
-      const yesterday = new Date(baseDate.getTime());
-      yesterday.setDate(baseDate.getDate() - 1);
-      const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
-      
-      const tomorrow = new Date(baseDate.getTime());
-      tomorrow.setDate(baseDate.getDate() + 1);
-      const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
-      
-      if (dateStr === yesterdayStr) {
-        label = "어제";
-      } else if (dateStr === tomorrowStr) {
-        label = "내일";
-      }
+    } else if (dateStr === yesterdayStr) {
+      label = "어제";
+    } else if (dateStr === tomorrowStr) {
+      label = "내일";
     }
     
     btn.innerText = label;

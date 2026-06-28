@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/style.css">
   
   <!-- Premium Modular Javascript Applications Entry Point -->
-  <script type="module" src="/app.js?v=1.1.6"></script>
+  <script type="module" src="/app.js?v=1.1.7"></script>
 </head>
 <body>
 
@@ -345,7 +345,7 @@
 
         <!-- Total Workload Summary Row -->
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color); background: rgba(255,255,255,0.01);">
-          <div style="background:rgba(0,0,0,0.2); padding:0.6rem 0.85rem; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+          <div class="hide-mobile" style="background:rgba(0,0,0,0.2); padding:0.6rem 0.85rem; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
             <div style="font-size:0.65rem; color:var(--text-muted); font-weight:600; margin-bottom:0.2rem;">선택 일자</div>
             <strong style="font-size:0.85rem; color:var(--color-primary);" id="dest-summary-date">----- (오늘)</strong>
           </div>
@@ -357,7 +357,7 @@
             <div style="font-size:0.65rem; color:var(--text-muted); font-weight:600; margin-bottom:0.2rem;">총 성공 완료량</div>
             <strong style="font-size:1.0rem; color:var(--success-color);" id="dest-summary-success">0건</strong>
           </div>
-          <div style="background:rgba(0,0,0,0.2); padding:0.6rem 0.85rem; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
+          <div class="hide-mobile" style="background:rgba(0,0,0,0.2); padding:0.6rem 0.85rem; border-radius:6px; border:1px solid rgba(255,255,255,0.03);">
             <div style="font-size:0.65rem; color:var(--text-muted); font-weight:600; margin-bottom:0.2rem;">총 실패량</div>
             <strong style="font-size:1.0rem; color:var(--danger-color);" id="dest-summary-fail">0건</strong>
           </div>
@@ -374,7 +374,7 @@
             </div>
             
             <!-- Site filter buttons -->
-            <div id="dest-site-buttons" style="display:flex; gap:0.25rem; flex-wrap:wrap; align-items:center;">
+            <div id="dest-site-buttons" class="hide-mobile" style="display:flex; gap:0.25rem; flex-wrap:wrap; align-items:center;">
               <!-- Rendered by JS dynamically -->
             </div>
           </div>
