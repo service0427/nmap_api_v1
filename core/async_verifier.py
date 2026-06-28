@@ -21,19 +21,26 @@ def run_async_verification():
     scraper = NaverPlaceScraper()
     try:
         with conn.cursor() as cursor:
-            # Query all PENDING places, OR places active today that are in FAIL state (checked > 30 mins ago) or have missing coordinates
+            # Query all PENDING places, OR places active today that are in FAIL state, or have missing details,
+            # OR places that have task failures (fail_cnt > 0, mismatch_cnt > 0, etc.) today to re-verify if their details changed.
             cursor.execute("""
                 SELECT DISTINCT p.dest_id, p.fail_count, p.check_status
                 FROM places p
                 LEFT JOIN raw_slots r ON p.dest_id = r.dest_id AND r.status = 'on' AND r.is_deleted = 0 AND %s BETWEEN r.start_date AND r.end_date
+                LEFT JOIN daily_progress dp ON p.dest_id = dp.dest_id AND dp.work_date = %s
                 WHERE p.check_status = 'PENDING'
                    OR (
                        r.id IS NOT NULL 
                        AND (p.check_status = 'FAIL' OR p.name = '' OR p.name LIKE 'FAILED_SCRAPE_%%' OR p.lat IS NULL OR p.lng IS NULL)
                        AND (p.updated_at IS NULL OR p.updated_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE))
                    )
+                   OR (
+                       r.id IS NOT NULL
+                       AND (dp.fail_cnt > 0 OR dp.mismatch_cnt > 0 OR dp.miss_cnt > 0)
+                       AND (p.updated_at IS NULL OR p.updated_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
+                   )
                 ORDER BY p.check_status ASC, p.created_at ASC
-            """, (get_kst_date(),))
+            """, (get_kst_date(), get_kst_date()))
             pending_items = cursor.fetchall()
             if not pending_items:
                 print("[Async Verifier] No PENDING or active stuck places to verify.")
