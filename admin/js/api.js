@@ -1,7 +1,7 @@
-import { state } from './state.js?v=1.1.15';
-import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js?v=1.1.15';
-import { filterLteCards } from './lte.js?v=1.1.15';
-import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js?v=1.1.15';
+import { state } from './state.js?v=1.1.16';
+import { updateCriticalAlertMonitor, filterDevicesLocally } from './devices.js?v=1.1.16';
+import { filterLteCards } from './lte.js?v=1.1.16';
+import { filterDestinationsLocally, renderDestDateButtons } from './destinations.js?v=1.1.16';
 
 // Fetch API Data
 export async function fetchData(manual = false) {
@@ -30,6 +30,8 @@ export async function fetchData(manual = false) {
     }
   }
 }
+window.fetchData = fetchData;
+
 
 // Update UI elements based on API payload
 export function updateUI(data) {

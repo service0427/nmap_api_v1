@@ -1,5 +1,4 @@
 import { state } from './state.js';
-import { fetchData } from './api.js';
 
 export async function openDeviceDetailModal(deviceId) {
   const modal = document.getElementById("device-detail-modal");
@@ -212,7 +211,7 @@ export async function saveDetailDeviceInfo() {
     }
     
     document.getElementById("device-detail-modal").style.display = "none";
-    fetchData();
+    window.fetchData();
   } catch (err) {
     alert("설정 저장 실패: " + err.message);
   }
@@ -246,7 +245,7 @@ export async function toggleDetailMute() {
         muteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px; height:12px;"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg> <span id="detail-mute-text">알람 켜짐</span>`;
       }
     }
-    fetchData();
+    window.fetchData();
   } catch (err) {
     alert("알람 상태 변경 실패: " + err.message);
   }
