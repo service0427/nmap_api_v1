@@ -16,15 +16,11 @@ export function initGrids() {
       { 
         field: "dest_id", 
         headerName: "목적지 ID", 
-        cellClass: 'font-mono', 
         width: 140,
         cellRenderer: p => `
-          <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
-            <span>${p.value}</span>
-            <button class="badge secondary" style="cursor:pointer; padding: 0.1rem 0.35rem; margin-left: 0.25rem; font-size: 0.65rem;" onclick="window.copyToClipboard('${p.value}', this)" title="ID 복사">
-              복사
-            </button>
-          </div>
+          <span class="font-mono" style="cursor:pointer; text-decoration:underline; font-weight:600; color:var(--color-primary);" onclick="window.copyToClipboard('${p.value}', this)" title="클릭하여 ID 복사">
+            ${p.value}
+          </span>
         `
       },
       { 

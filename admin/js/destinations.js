@@ -142,9 +142,8 @@ export function filterDestinationsLocally(resetPage = false) {
               ${d.name || '이름 없음'}
             </h4>
             
-            <div style="font-size:0.75rem; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; background:rgba(0,0,0,0.15); padding:0.35rem 0.6rem; border-radius:4px;">
-              <span>ID: <strong style="font-family:monospace; color:var(--text-primary); font-size:0.8rem;">${d.dest_id}</strong></span>
-              <button class="badge secondary" style="cursor:pointer; padding: 0.15rem 0.4rem; font-size:0.65rem; border:1px solid var(--border-color);" onclick="window.copyToClipboard('${d.dest_id}', this)">ID 복사</button>
+            <div style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; margin-bottom:0.75rem; background:rgba(0,0,0,0.15); padding:0.35rem 0.6rem; border-radius:4px; cursor:pointer;" onclick="window.copyToClipboard('${d.dest_id}', this)" title="클릭하여 ID 복사">
+              <span>ID: <strong style="font-family:monospace; color:var(--text-primary); font-size:0.8rem; text-decoration:underline;">${d.dest_id}</strong> (터치하여 복사)</span>
             </div>
             
             <!-- 오늘 달성량 & 달성률 -->
