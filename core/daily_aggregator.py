@@ -24,35 +24,52 @@ def aggregate_daily_quota():
     try:
         conn = pymysql.connect(**DB_CONFIG)
         with conn.cursor() as cursor:
-            # Database Cleanup: Delete records older than 7 days / 24 hours at 3:00 AM KST to prevent bloat
-            if kst_now.hour == 3 and kst_now.minute == 0:
-                print("  Running Database Cleanup...")
-                try:
-                    # 7 days cleanup
-                    cursor.execute("DELETE FROM tasks_log WHERE work_date < DATE_SUB(CURDATE(), INTERVAL 7 DAY)")
-                    print(f"    Deleted old tasks_log: {cursor.rowcount} rows")
-                    cursor.execute("DELETE FROM fail_log WHERE created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)")
-                    print(f"    Deleted old fail_log: {cursor.rowcount} rows")
-                    cursor.execute("DELETE FROM allocation_failures WHERE kst_time < DATE_SUB(NOW(), INTERVAL 7 DAY)")
-                    print(f"    Deleted old allocation_failures: {cursor.rowcount} rows")
-                    cursor.execute("DELETE FROM optimizer_success_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)")
-                    print(f"    Deleted old optimizer_success_logs: {cursor.rowcount} rows")
+            # Database Cleanup & Backup: Run once a day during the 3:00 AM hour KST to prevent bloat
+            if kst_now.hour == 3:
+                project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                cleanup_run_file = os.path.join(project_dir, "data/hashes/cleanup_last_run.txt")
+                already_run = False
+                if os.path.exists(cleanup_run_file):
+                    with open(cleanup_run_file, "r") as f:
+                        if f.read().strip() == kst_date.isoformat():
+                            already_run = True
+                            
+                if not already_run:
+                    print("  Running Database Cleanup...")
+                    try:
+                        # 7 days cleanup
+                        cursor.execute("DELETE FROM tasks_log WHERE work_date < DATE_SUB(CURDATE(), INTERVAL 7 DAY)")
+                        print(f"    Deleted old tasks_log: {cursor.rowcount} rows")
+                        cursor.execute("DELETE FROM fail_log WHERE created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)")
+                        print(f"    Deleted old fail_log: {cursor.rowcount} rows")
+                        cursor.execute("DELETE FROM allocation_failures WHERE kst_time < DATE_SUB(NOW(), INTERVAL 7 DAY)")
+                        print(f"    Deleted old allocation_failures: {cursor.rowcount} rows")
+                        cursor.execute("DELETE FROM optimizer_success_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)")
+                        print(f"    Deleted old optimizer_success_logs: {cursor.rowcount} rows")
+                        
+                        # 24 hours cleanup
+                        cursor.execute("DELETE FROM ip_success_history WHERE last_success_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)")
+                        print(f"    Deleted old ip_success_history: {cursor.rowcount} rows")
+                        cursor.execute("DELETE FROM ip_allocation_history WHERE allocated_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)")
+                        print(f"    Deleted old ip_allocation_history: {cursor.rowcount} rows")
+                    except Exception as ex_clean:
+                        print(f"    Error during database cleanup: {ex_clean}")
                     
-                    # 24 hours cleanup
-                    cursor.execute("DELETE FROM ip_success_history WHERE last_success_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)")
-                    print(f"    Deleted old ip_success_history: {cursor.rowcount} rows")
-                    cursor.execute("DELETE FROM ip_allocation_history WHERE allocated_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)")
-                    print(f"    Deleted old ip_allocation_history: {cursor.rowcount} rows")
-                except Exception as ex_clean:
-                    print(f"    Error during database cleanup: {ex_clean}")
-                
-                # Automated daily database backup
-                print("  Running Automated Daily Database Backup...")
-                try:
-                    from core.db_backup import run_backup
-                    run_backup()
-                except Exception as ex_backup:
-                    print(f"    Error during database backup: {ex_backup}")
+                    # Automated daily database backup
+                    print("  Running Automated Daily Database Backup...")
+                    try:
+                        from core.db_backup import run_backup
+                        run_backup()
+                    except Exception as ex_backup:
+                        print(f"    Error during database backup: {ex_backup}")
+                        
+                    # Write completion file to prevent running again today
+                    try:
+                        os.makedirs(os.path.dirname(cleanup_run_file), exist_ok=True)
+                        with open(cleanup_run_file, "w") as f:
+                            f.write(kst_date.isoformat())
+                    except Exception as ex_file:
+                        print(f"    Error writing cleanup_last_run file: {ex_file}")
             # We initialize for both Today and Tomorrow to avoid the midnight gap
             days_to_sync = [kst_date, kst_date + timedelta(days=1)]
             

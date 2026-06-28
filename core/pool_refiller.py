@@ -158,9 +158,9 @@ def refill_pool():
                                     break
                             
                             # Determine strict maximum rank threshold based on distance
-                            if dist_m >= 5000:
+                            if real_d >= 5000:
                                 max_allowed_rank = 3
-                            elif dist_m >= 1500:
+                            elif real_d >= 1500:
                                 max_allowed_rank = 5
                             else:
                                 max_allowed_rank = 8
