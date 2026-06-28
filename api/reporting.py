@@ -52,7 +52,10 @@ async def report_result(report: ResultReport, request: Request):
         with get_db_cursor() as cursor:
             cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id, result_msg FROM tasks_log WHERE id = %s", (actual_task_id,))
             task_row = cursor.fetchone()
-            if not task_row or task_row['status'] not in ['WORKING', 'RUNNING', 'SUCCESS', 'FAIL']: 
+            if not task_row:
+                return {"status": "REPORTED"}
+            status_upper = (task_row['status'] or '').upper()
+            if status_upper in ['SUCCESS', 'FAIL'] or status_upper.startswith('FAIL'): 
                 return {"status": "REPORTED"}
             
             client_dist = int(report.drive_dist) if report.drive_dist and str(report.drive_dist).isdigit() else 0
