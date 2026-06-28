@@ -640,6 +640,10 @@ main {
   overflow: hidden;
 }
 
+#tab-destinations .grid-panel {
+  height: calc(100vh - 355px) !important;
+}
+
 /* ag-Grid Custom Dark Styles */
 .ag-theme-quartz-dark {
   --ag-background-color: var(--bg-card);

@@ -12,5 +12,7 @@ export const state = {
   deviceViewMode: 'accordion',
   pastDateStrs: [],
   activeDate: 'today',
+  selectedDestinationDate: null,
+  selectedSiteFilter: 'all',
   lastApiData: null
 };

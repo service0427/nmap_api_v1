@@ -7,7 +7,7 @@ export function filterDestinationsLocally(resetPage = false) {
   if (!state.rawDestinations) return;
   
   const searchInput = document.getElementById("dest-search-input");
-  const siteSelect = document.getElementById("dest-site-select");
+  const siteButtonsEl = document.getElementById("dest-site-buttons");
   const countBadge = document.getElementById("dest-slot-count-badge");
   
   const gridEl = document.getElementById("grid-destinations");
@@ -44,32 +44,41 @@ export function filterDestinationsLocally(resetPage = false) {
   if (summaryFailEl) summaryFailEl.innerText = `${totalFail.toLocaleString()}건`;
   if (summaryRateEl) summaryRateEl.innerText = `${rate}%`;
 
-  // 2. Populate Site Filter Select option dropdown dynamically
-  if (siteSelect) {
-    const uniqueSites = [...new Set(rawDests.map(d => (d.site_id || '').toUpperCase()).filter(Boolean))].sort();
-    const existingOptions = Array.from(siteSelect.options).map(o => o.value).filter(v => v !== "all").sort();
-    const isSame = uniqueSites.length === existingOptions.length && uniqueSites.every((v, i) => v === existingOptions[i]);
+  // 2. Populate Site Filter Button Group dynamically
+  const activeSite = state.selectedSiteFilter || 'all';
+  if (siteButtonsEl) {
+    const uniqueSites = ["all", ...new Set(rawDests.map(d => (d.site_id || '').toUpperCase()).filter(Boolean))].sort();
+    const existingButtons = Array.from(siteButtonsEl.querySelectorAll("button")).map(b => b.getAttribute("data-site"));
+    const isSame = uniqueSites.length === existingButtons.length && uniqueSites.every((v, i) => v === existingButtons[i]);
     
     if (!isSame) {
-      const currentVal = siteSelect.value;
-      siteSelect.innerHTML = '<option value="all">전체 사이트</option>';
+      siteButtonsEl.innerHTML = "";
       uniqueSites.forEach(site => {
-        const option = document.createElement("option");
-        option.value = site;
-        option.innerText = site;
-        siteSelect.appendChild(option);
+        const btn = document.createElement("button");
+        btn.className = "date-tab-btn";
+        btn.setAttribute("data-site", site);
+        btn.innerText = site === "all" ? "전체" : site;
+        
+        btn.onclick = () => {
+          state.selectedSiteFilter = site;
+          siteButtonsEl.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          filterDestinationsLocally(true);
+        };
+        
+        siteButtonsEl.appendChild(btn);
       });
-      if (uniqueSites.includes(currentVal.toUpperCase()) || currentVal === "all") {
-        siteSelect.value = currentVal;
-      } else {
-        siteSelect.value = "all";
-      }
     }
+    
+    // Set active state
+    siteButtonsEl.querySelectorAll("button").forEach(b => {
+      b.classList.toggle("active", b.getAttribute("data-site") === activeSite);
+    });
   }
 
-  // 3. Filter Destinations locally by search and site filter
+  // 3. Filter Destinations locally by search and active site button
   const search = searchInput ? searchInput.value.toLowerCase() : "";
-  const siteFilter = siteSelect ? siteSelect.value : "all";
+  const siteFilter = activeSite;
   
   if (resetPage) {
     mobilePage = 1;

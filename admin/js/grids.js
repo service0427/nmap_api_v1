@@ -4,6 +4,13 @@ export function initGrids() {
   // 1. Destinations Grid
   const destinationsGridOptions = {
     columnDefs: [
+      { 
+        headerName: "No.", 
+        valueGetter: "node.rowIndex + 1", 
+        width: 60, 
+        cellClass: 'text-muted font-mono',
+        sortable: false
+      },
       { field: "site_id", headerName: "사이트", width: 100, filter: true },
       { field: "name", headerName: "상호", width: 220, filter: true },
       { 

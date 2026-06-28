@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/style.css">
   
   <!-- Premium Modular Javascript Applications Entry Point -->
-  <script type="module" src="/app.js?v=1.1.4"></script>
+  <script type="module" src="/app.js?v=1.1.5"></script>
 </head>
 <body>
 
@@ -335,9 +335,6 @@
     <!-- 3. Destinations Tab (ag-Grid) -->
     <div id="tab-destinations" class="tab-content">
       <div class="panel">
-        <div class="panel-header">
-          <h3 class="panel-title"><i data-lucide="map-pin" style="width:16px; height:16px;"></i>목적지 할당 제어</h3>
-        </div>
 
         <!-- Date navigation bar (Past 7 days ~ Future 7 days) -->
         <div style="background: rgba(0,0,0,0.15); border-bottom: 1px solid var(--border-color); padding: 0.75rem 1rem;">
@@ -377,15 +374,10 @@
               <input type="text" id="dest-search-input" class="search-input" placeholder="목적지 ID 또는 상호 검색..." oninput="window.onDestSearch()">
             </div>
             
-            <!-- Site filter select -->
-            <select id="dest-site-select" class="select-input" onchange="window.onDestSearch()" style="max-width:150px;">
-              <option value="all">전체 사이트</option>
-              <option value="LUF">LUF</option>
-              <option value="GHOST2026">GHOST2026</option>
-              <option value="RUDOLPH">RUDOLPH</option>
-              <option value="SSOLUP">SSOLUP</option>
-              <option value="QUIXSLOT">QUIXSLOT</option>
-            </select>
+            <!-- Site filter buttons -->
+            <div id="dest-site-buttons" style="display:flex; gap:0.25rem; flex-wrap:wrap; align-items:center;">
+              <!-- Rendered by JS dynamically -->
+            </div>
           </div>
           
           <!-- Slot count display -->
@@ -405,10 +397,7 @@
     <div id="tab-lte" class="tab-content">
       <div class="panel">
         <div class="panel-header">
-          <h3 class="panel-title" style="display:flex; align-items:center; gap:0.5rem;">
-            <i data-lucide="wifi" style="width:16px; height:16px;"></i>
-            <span>LTE 장비 데이터 실시간 사용량 (어제 대비 분석)</span>
-          </h3>
+
           <span class="badge info" style="font-size:0.75rem;" id="lte-summary-badge">모뎀: --개</span>
         </div>
         <div class="search-bar">
