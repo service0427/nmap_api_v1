@@ -185,15 +185,41 @@ export function updateUI(data) {
       data.success_feed.forEach(f => {
         const item = document.createElement("div");
         item.className = "timeline-item";
-        const timeFormatted = f.start_time ? f.start_time.substring(11, 19) : "--:--:--";
+        
+        const formatTime = (tStr) => {
+          if (!tStr || typeof tStr !== "string") return "--:--:--";
+          if (tStr.length >= 19) return tStr.substring(11, 19);
+          const tIdx = tStr.indexOf("T");
+          if (tIdx !== -1 && tStr.length >= tIdx + 9) return tStr.substring(tIdx + 1, tIdx + 9);
+          return tStr;
+        };
+        
+        const startFormatted = formatTime(f.start_time);
+        const endFormatted = formatTime(f.end_time);
+        
+        let durationFormatted = "";
+        if (f.duration_sec) {
+          const mins = Math.floor(f.duration_sec / 60);
+          const secs = f.duration_sec % 60;
+          durationFormatted = mins > 0 ? `${mins}분 ${secs}초` : `${secs}초`;
+        } else {
+          durationFormatted = "미측정";
+        }
         
         item.innerHTML = `
           <div class="timeline-icon">
             <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
           </div>
           <div class="timeline-content">
-            <span class="timeline-title">${f.dest_name}</span>
-            <span class="timeline-meta">${f.device_memo} | ${timeFormatted}</span>
+            <span class="timeline-title" style="font-weight:600; font-size:0.8rem; display:block;">${f.dest_name}</span>
+            <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">
+              <span>${f.device_memo}</span>
+            </div>
+            <div style="font-size:0.65rem; color:var(--text-muted); margin-top:1px; display:flex; gap:6px; flex-wrap:wrap;">
+              <span>시작: <span style="color:#6366f1;">${startFormatted}</span></span>
+              <span>종료: <span style="color:#10b981;">${endFormatted}</span></span>
+              <span>소요: <strong style="color:var(--color-primary);">${durationFormatted}</strong></span>
+            </div>
           </div>
         `;
         feedItemsDiv.appendChild(item);
