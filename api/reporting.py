@@ -84,9 +84,6 @@ async def report_result(report: ResultReport, request: Request):
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (actual_task_id, report.device_id, task_row['dest_id'], report.status, report.requested_address, report.actual_address, report.message, report.log_path))
 
-                # Immediately delete unused coordinates in pool for this place
-                cursor.execute("DELETE FROM task_position_pool WHERE dest_id = %s AND created_date = %s AND is_used = 0", (task_row['dest_id'], kst_date))
-
                 if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
                     update_device_stats(cursor, report.device_id, fail=1)
                     
@@ -198,20 +195,13 @@ async def update_status(data: StatusUpdate, request: Request):
                                 update_device_stats(cursor, data.device_id, success=1)
                             cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
                             cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) VALUES (%s, %s, %s, %s, 1, 0, 0, %s, %s) ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), fail_cnt=0, alloc_fail_cnt=0, last_dist_m=VALUES(last_dist_m)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid'], task_row['distance_m'], kst_now))
-                            
-
-
-                    else: 
+                    else:
                         # Log to fail_log
                         dev_id = data.device_id or (task_row['device_id'] if task_row else None)
                         cursor.execute("""
                             INSERT INTO fail_log (log_id, device_id, dest_id, fail_status, requested_address, actual_address, error_msg, log_path)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         """, (actual_task_id, dev_id, task_row['dest_id'] if task_row else "Unknown", data.status, data.requested_address, data.actual_address, data.error_msg, data.log_path))
-
-                        # Immediately delete unused coordinates in pool for this place
-                        if task_row:
-                            cursor.execute("DELETE FROM task_position_pool WHERE dest_id = %s AND created_date = %s AND is_used = 0", (task_row['dest_id'], kst_date))
 
                         if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
                             if data.device_id:
