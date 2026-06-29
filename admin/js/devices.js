@@ -143,7 +143,9 @@ export function filterDevicesLocally() {
   const statusFilter = statusSelect ? statusSelect.value : "all";
   
   const filtered = state.rawDevices.filter(d => {
-    const isAlerting = d.status === 'ERROR' || (d.today_fail || 0) >= 5;
+    const isAlerting = d.status === 'ERROR' || 
+                       (d.status === 'ON' && d.silence_level === 'danger') || 
+                       ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0));
     const matchesSearch = 
       (d.hostname || '').toLowerCase().includes(search) || 
       d.device_id.toLowerCase().includes(search) || 
@@ -258,7 +260,9 @@ function renderAccordionView(filteredDevices) {
     const gridDiv = groupDiv.querySelector(".device-grid");
     devicesInGroup.forEach(d => {
       const cardDiv = document.createElement("div");
-      const isAlerting = d.status === 'ERROR' || (d.today_fail || 0) >= 5;
+      const isAlerting = d.status === 'ERROR' || 
+                         (d.status === 'ON' && d.silence_level === 'danger') || 
+                         ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0));
       
       let statusClass = 'status-off';
       let indClass = 'inactive';
@@ -280,6 +284,12 @@ function renderAccordionView(filteredDevices) {
           borderColor = 'var(--color-warning)';
           statusLabelText = `지연 (${d.silence_minutes}분)`;
           statusBadgeClass = 'warning';
+        } else if ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0)) {
+          statusClass = 'status-error';
+          indClass = 'alert';
+          borderColor = 'var(--color-danger)';
+          statusLabelText = `실패과다 (${d.today_fail}회)`;
+          statusBadgeClass = 'danger';
         } else {
           statusClass = 'status-on';
           indClass = 'active';
@@ -470,7 +480,9 @@ function renderTableView(filteredDevices) {
       { field: 'current_ip', headerName: 'IP 주소', sortable: true, filter: true, width: 120 },
       { field: 'status', headerName: '상태', width: 110, cellRenderer: params => {
           const d = params.data;
-          const isAlerting = d.status === 'ERROR' || (d.today_fail || 0) >= 5;
+          const isAlerting = d.status === 'ERROR' || 
+                             (d.status === 'ON' && d.silence_level === 'danger') || 
+                             ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0));
           let badgeClass = 'secondary';
           let statusText = d.status || 'OFF';
           
@@ -481,6 +493,9 @@ function renderTableView(filteredDevices) {
             } else if (d.silence_level === 'warning') {
               badgeClass = 'warning';
               statusText = `지연 (${d.silence_minutes}m)`;
+            } else if ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0)) {
+              badgeClass = 'danger';
+              statusText = `실패과다 (${d.today_fail}f)`;
             } else {
               badgeClass = 'success';
               statusText = 'ON';

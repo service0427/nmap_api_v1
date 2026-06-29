@@ -253,12 +253,12 @@ async def get_admin_summary(date: str = None):
                 if d.get('is_alert_muted'):
                     continue
                 # 1) Failure count alert
-                if d['today_fail'] >= 5:
+                if d['today_fail'] >= 5 and d['today_fail'] > d['today_success']:
                     alarms.append({
                         "type": "DEVICE", 
                         "level": "danger", 
                         "target": d['hostname'] or d['device_id'], 
-                        "msg": f"실패 급증 ({d['today_fail']}회)"
+                        "msg": f"실패 과다 (성공 {d['today_success']}회 | 실패 {d['today_fail']}회)"
                     })
                 # 2) Silence alert using calculated level
                 elif d['silence_level']:

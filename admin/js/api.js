@@ -163,7 +163,9 @@ export function updateUI(data) {
   const devices = data.devices || [];
   let faultyCount = 0;
   devices.forEach(d => {
-    const isAlerting = d.status === 'ERROR' || (d.today_fail || 0) >= 5 || (d.status === 'ON' && d.silence_minutes >= 20);
+    const isAlerting = d.status === 'ERROR' || 
+                       (d.status === 'ON' && d.silence_minutes >= 20) || 
+                       ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0));
     if (isAlerting) {
       faultyCount++;
     }
