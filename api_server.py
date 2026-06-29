@@ -309,7 +309,9 @@ def sync_legacy_lte_usage(modem_name: str, upload: int, download: int):
 
 def format_address(addr: Optional[str]) -> Optional[str]:
     if not addr: return addr
-    parts = addr.strip().split(' ')
+    # Split by comma first and take the preceding section
+    addr = addr.split(',')[0].strip()
+    parts = addr.split(' ')
     if len(parts) > 1:
         return ' '.join(parts[1:]).strip()
     return addr.strip()
