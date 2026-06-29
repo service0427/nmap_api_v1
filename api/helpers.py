@@ -113,15 +113,8 @@ def log_allocation_failure(cursor, device_id, error_msg, ip, payload=None):
                    (device_id, error_msg, kst_now, ip, json.dumps(payload) if payload else None))
 
 def format_address(addr: Optional[str]) -> Optional[str]:
-    import re
     if not addr: return addr
     parts = addr.strip().split(' ')
-    if len(parts) <= 1:
-        return addr.strip()
-    clean_parts = parts[1:]
-    cutoff_index = len(clean_parts)
-    for idx, part in enumerate(clean_parts):
-        if re.match(r'^\d+(-\d+)?$', part):
-            cutoff_index = idx + 1
-            break
-    return ' '.join(clean_parts[:cutoff_index]).strip()
+    if len(parts) > 1:
+        return ' '.join(parts[1:]).strip()
+    return addr.strip()

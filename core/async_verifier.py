@@ -76,6 +76,13 @@ def run_async_verification():
                         WHERE dest_id = %s
                     """, (name, address, original_address, lat, lng, is_opt, get_kst_now(), dest_id))
                     
+                    # 2b. daily_progress 테이블의 오늘 실패 카운트 초기화 (할당 자동 잠금 해제)
+                    cursor.execute("""
+                        UPDATE daily_progress 
+                        SET fail_cnt = 0, miss_cnt = 0, mismatch_cnt = 0, timeout_cnt = 0 
+                        WHERE dest_id = %s AND work_date = %s
+                    """, (dest_id, get_kst_date()))
+                    
                     # 3. raw_slots의 빈 검색어(search_keyword)를 실제 상호명으로 즉시 보완 동기화
                     cursor.execute("""
                         UPDATE raw_slots
