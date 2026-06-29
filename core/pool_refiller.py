@@ -131,8 +131,8 @@ def refill_pool():
                 # 2. Generate coordinates and verify with Naver Map search
                 if needed > 0:
                     inserted_cnt = 0
-                    keywords = get_keywords_for_place(cursor, dest_id, row['name'])
-                    primary_kw = keywords[0] if keywords else row['name']
+                    # Always search by the place's real business name (상호) to verify coordinates
+                    primary_kw = row['name']
                     
                     attempts = 0
                     max_attempts = needed * 3
