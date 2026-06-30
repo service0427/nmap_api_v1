@@ -140,6 +140,15 @@ export function updateUI(data) {
   if (rudolphProgressFill) rudolphProgressFill.style.width = `${Math.min(100, rudolphPct)}%`;
   if (rudolphCounts) rudolphCounts.innerText = formatCounts(stats.rudolph_success, stats.rudolph_target, stats.rudolph_fail);
 
+  // wjd
+  const wjdPct = stats.wjd_target > 0 ? Math.round((stats.wjd_success / stats.wjd_target) * 100) : 0;
+  const wjdPctEl = document.getElementById("wjd-percent");
+  const wjdProgressFill = document.getElementById("wjd-progress-fill");
+  const wjdCounts = document.getElementById("wjd-counts");
+  if (wjdPctEl) wjdPctEl.innerText = `${wjdPct}%`;
+  if (wjdProgressFill) wjdProgressFill.style.width = `${Math.min(100, wjdPct)}%`;
+  if (wjdCounts) wjdCounts.innerText = formatCounts(stats.wjd_success, stats.wjd_target, stats.wjd_fail);
+
   // Total Unified
   const totalPct = stats.total_target > 0 ? Math.round((stats.success / stats.total_target) * 100) : 0;
   const totalPctEl = document.getElementById("total-percent");

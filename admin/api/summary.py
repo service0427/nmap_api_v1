@@ -47,6 +47,9 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
     ghost2026 = stats_by_site.get('GHOST2026', {'target': 0, 'success': 0, 'fail': 0})
     rudolph = stats_by_site.get('RUDOLPH', {'target': 0, 'success': 0, 'fail': 0})
     quixslot = stats_by_site.get('QUIXSLOT', {'target': 0, 'success': 0, 'fail': 0})
+    wjd = stats_by_site.get('WJDTJR07', {'target': 0, 'success': 0, 'fail': 0})
+    if not wjd or (wjd.get('target', 0) == 0 and wjd.get('success', 0) == 0 and wjd.get('fail', 0) == 0):
+        wjd = stats_by_site.get('WJDTJR', {'target': 0, 'success': 0, 'fail': 0})
     test = stats_by_site.get('TEST', {'target': 0, 'success': 0, 'fail': 0})
     
     fsd_target = fsd['target'] or 0
@@ -73,13 +76,17 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
     quixslot_success = quixslot['success'] or 0
     quixslot_fail = quixslot['fail'] or 0
     
+    wjd_target = wjd['target'] or 0
+    wjd_success = wjd['success'] or 0
+    wjd_fail = wjd['fail'] or 0
+    
     test_target = test['target'] or 0
     test_success = test['success'] or 0
     test_fail = test['fail'] or 0
     
-    total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target + quixslot_target
-    total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success + quixslot_success
-    total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail + quixslot_fail
+    total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target + quixslot_target + wjd_target
+    total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success + quixslot_success + wjd_success
+    total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail + quixslot_fail + wjd_fail
     
     return {
         "fsd_target": fsd_target,
@@ -100,6 +107,9 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
         "quixslot_target": quixslot_target,
         "quixslot_success": quixslot_success,
         "quixslot_fail": quixslot_fail,
+        "wjd_target": wjd_target,
+        "wjd_success": wjd_success,
+        "wjd_fail": wjd_fail,
         "test_target": test_target,
         "test_success": test_success,
         "test_fail": test_fail,
