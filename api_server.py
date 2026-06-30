@@ -309,7 +309,25 @@ def sync_legacy_lte_usage(modem_name: str, upload: int, download: int):
 
 def format_address(addr: Optional[str]) -> Optional[str]:
     if not addr: return addr
-    # Split by comma first and take the preceding section
+    
+    # 1. Clean merged road + jibun address (e.g. '충남 당진시 벚꽃길 37-5 충남 당진시 대덕동 258-5번지')
+    provinces = [
+        "서울", "인천", "대전", "광주", "대구", "울산", "부산", "세종",
+        "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
+        "경기도", "강원도", "충청북도", "충청남도", "전라북도", "전라남도", "경상북도", "경상남도", "제주특별자치도"
+    ]
+    parts = addr.split(' ')
+    for i in range(1, len(parts)):
+        word = parts[i]
+        for prov in provinces:
+            if word == prov or word.startswith(prov + " "):
+                addr = ' '.join(parts[:i]).strip()
+                break
+        else:
+            continue
+        break
+
+    # 2. Split by comma first and take the preceding section
     addr = addr.split(',')[0].strip()
     parts = addr.split(' ')
     if len(parts) > 1:
