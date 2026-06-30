@@ -133,9 +133,8 @@ def refill_pool():
                     inserted_cnt = 0
                     # Always search by the place's real business name (상호) to verify coordinates
                     primary_kw = row['name']
-                    
-                    attempts = 0
-                    max_attempts = needed * 3
+                                     attempts = 0
+                    max_attempts = needed * 30
                     
                     while inserted_cnt < needed and attempts < max_attempts:
                         attempts += 1
@@ -151,6 +150,7 @@ def refill_pool():
                             
                             # Find actual rank in 'all' list
                             actual_rank = None
+                            chosen_keyword = primary_kw
                             for i, item in enumerate(all_items):
                                 p_info = item.get('place')
                                 if p_info and str(p_info.get('id')) == str(dest_id):
@@ -164,6 +164,36 @@ def refill_pool():
                                 max_allowed_rank = 5
                             else:
                                 max_allowed_rank = 8
+                                
+                            # Backup keyword check if not found or rank too low
+                            if actual_rank is None or actual_rank > max_allowed_rank:
+                                backup_keywords = []
+                                cursor.execute("SELECT keyword FROM place_keywords WHERE dest_id = %s AND status = 'on'", (dest_id,))
+                                for r in cursor.fetchall():
+                                    backup_keywords.append(r['keyword'])
+                                
+                                cursor.execute("SELECT search_keyword FROM raw_slots WHERE dest_id = %s AND status = 'on' AND is_deleted = 0 LIMIT 1", (dest_id,))
+                                rs_row = cursor.fetchone()
+                                if rs_row and rs_row['search_keyword'] and rs_row['search_keyword'] not in backup_keywords:
+                                    backup_keywords.append(rs_row['search_keyword'])
+                                    
+                                for b_kw in backup_keywords:
+                                    try:
+                                        res_bk = scraper._mobile_search(b_kw, lat=str(s_lat), lng=str(s_lng), timeout=5)
+                                        all_bk = res_bk.get("all", [])
+                                        for i, item_bk in enumerate(all_bk):
+                                            p_info = item_bk.get('place')
+                                            if p_info and str(p_info.get('id')) == str(dest_id):
+                                                bk_rank = i + 1
+                                                if bk_rank <= max_allowed_rank:
+                                                    actual_rank = bk_rank
+                                                    chosen_keyword = b_kw
+                                                    print(f"      [Pool Refiller] Backup keyword '{b_kw}' succeeded! Rank: {actual_rank}")
+                                                    break
+                                        if actual_rank is not None:
+                                            break
+                                    except Exception as e_bk:
+                                        print(f"      [Pool Refiller] Backup keyword '{b_kw}' search error: {e_bk}")
                             
                             # Only insert if the place is actually found and within the visible rank threshold
                             if actual_rank is not None and actual_rank <= max_allowed_rank:
@@ -175,39 +205,16 @@ def refill_pool():
                                     VALUES (%s, %s, %s, %s, 0, %s, %s, %s, %s, %s)
                                 """, (
                                     dest_id, s_lat, s_lng, int(real_d), kst_date,
-                                    primary_kw, total_place_count, autocomplete_count, actual_rank
+                                    chosen_keyword, total_place_count, autocomplete_count, actual_rank
                                 ))
                                 inserted_cnt += 1
-                                print(f"    [Pool Refiller] Saved valid coordinate for '{row['name']}' at {int(real_d)}m (Rank: {actual_rank})")
+                                print(f"    [Pool Refiller] Saved valid coordinate for '{row['name']}' at {int(real_d)}m (Rank: {actual_rank}, Keyword: {chosen_keyword})")
                             else:
                                 print(f"    [Pool Refiller] Skipped invalid coordinate (Rank: {actual_rank}, Max Allowed: {max_allowed_rank})")
                                 
                         except Exception as e:
                             print(f"    [Pool Refiller] Warning: Failed to fetch search details: {e}")
                             time.sleep(0.1)
-                    
-                    # Fallback: If we couldn't find enough verified coordinates, force-generate at minimum distance
-                    if inserted_cnt < needed:
-                        fallback_needed = needed - inserted_cnt
-                        print(f"  [{row['name']}] Verified pool generation fell short. Force-generating {fallback_needed} fallback coordinates...")
-                        for _ in range(fallback_needed):
-                            # Generate at a safe close range (dist_min to dist_min + 100)
-                            s_lat, s_lng, real_d, _ = calculate_gps_and_speed(lat, lng, dist_min, min(dist_max, dist_min + 100), 0, 0, fixed_arrival_s=600)
-                            
-                            # If it's a close range optimizer target, assume actual_rank is 1 so it gets allocated
-                            fallback_rank = 1 if dist_max <= 300 else -1
-                            
-                            cursor.execute("""
-                                INSERT INTO task_position_pool (
-                                    dest_id, lat, lng, dist_m, is_used, created_date,
-                                    keyword, total_place_count, autocomplete_count, actual_rank
-                                )
-                                VALUES (%s, %s, %s, %s, 0, %s, %s, 0, 0, %s)
-                            """, (
-                                dest_id, s_lat, s_lng, int(real_d), kst_date,
-                                primary_kw, fallback_rank
-                            ))
-                            inserted_cnt += 1
                             
                     print(f"  [{row['name']}] Generated & verified {inserted_cnt} coordinates (attempts: {attempts}) in range {dist_min}m ~ {dist_max}m.")
                     
