@@ -193,15 +193,19 @@ def refill_pool():
                         for _ in range(fallback_needed):
                             # Generate at a safe close range (dist_min to dist_min + 100)
                             s_lat, s_lng, real_d, _ = calculate_gps_and_speed(lat, lng, dist_min, min(dist_max, dist_min + 100), 0, 0, fixed_arrival_s=600)
+                            
+                            # If it's a close range optimizer target, assume actual_rank is 1 so it gets allocated
+                            fallback_rank = 1 if dist_max <= 300 else -1
+                            
                             cursor.execute("""
                                 INSERT INTO task_position_pool (
                                     dest_id, lat, lng, dist_m, is_used, created_date,
                                     keyword, total_place_count, autocomplete_count, actual_rank
                                 )
-                                VALUES (%s, %s, %s, %s, 0, %s, %s, 0, 0, -1)
+                                VALUES (%s, %s, %s, %s, 0, %s, %s, 0, 0, %s)
                             """, (
                                 dest_id, s_lat, s_lng, int(real_d), kst_date,
-                                primary_kw
+                                primary_kw, fallback_rank
                             ))
                             inserted_cnt += 1
                             
