@@ -67,21 +67,43 @@ def run_async_verification():
                     lng = info['lng']
                     is_opt = 1 if re.search(r'누수|청소|하수구|변기|이사|싱크대|뚫음', name) else 0
                     
+                    # Check if anything changed
+                    cursor.execute("SELECT name, address, original_address, lat, lng FROM places WHERE dest_id = %s", (dest_id,))
+                    old_row = cursor.fetchone()
+                    
+                    changed = False
+                    if old_row:
+                        old_lat = old_row.get('lat')
+                        old_lng = old_row.get('lng')
+                        if old_row.get('name') != name or old_row.get('address') != address or old_row.get('original_address') != original_address:
+                            changed = True
+                        elif old_lat is None or old_lng is None:
+                            changed = True
+                        elif abs(float(old_lat) - float(lat)) > 0.0001 or abs(float(old_lng) - float(lng)) > 0.0001:
+                            changed = True
+                    else:
+                        changed = True
+                            
+                    # If details changed, we reset failures. Otherwise, we keep them!
+                    new_fail_count = 0 if changed else (item.get('fail_count') or 0)
+                    
                     # 2. places 테이블 업데이트 (VERIFIED)
                     cursor.execute("""
                         UPDATE places 
                         SET name = %s, address = %s, original_address = %s, 
                             lat = %s, lng = %s, check_status = 'VERIFIED', is_optimizer = %s,
-                            fail_count = 0, last_checked_at = %s
+                            fail_count = %s, last_checked_at = %s
                         WHERE dest_id = %s
-                    """, (name, address, original_address, lat, lng, is_opt, get_kst_now(), dest_id))
+                    """, (name, address, original_address, lat, lng, is_opt, new_fail_count, get_kst_now(), dest_id))
                     
-                    # 2b. daily_progress 테이블의 오늘 실패 카운트 초기화 (할당 자동 잠금 해제)
-                    cursor.execute("""
-                        UPDATE daily_progress 
-                        SET fail_cnt = 0, miss_cnt = 0, mismatch_cnt = 0, timeout_cnt = 0 
-                        WHERE dest_id = %s AND work_date = %s
-                    """, (dest_id, get_kst_date()))
+                    # 2b. daily_progress 테이블의 오늘 실패 카운트 초기화 (정보 변경 시에만 자동 잠금 해제)
+                    if changed:
+                        cursor.execute("""
+                            UPDATE daily_progress 
+                            SET fail_cnt = 0, miss_cnt = 0, mismatch_cnt = 0, timeout_cnt = 0 
+                            WHERE dest_id = %s AND work_date = %s
+                        """, (dest_id, get_kst_date()))
+                        print(f"  [INFO] Details changed for {dest_id}. Resetting daily progress failures.")
                     
                     # 3. raw_slots의 빈 검색어(search_keyword)를 실제 상호명으로 즉시 보완 동기화
                     cursor.execute("""
