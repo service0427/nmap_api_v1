@@ -55,6 +55,21 @@ def aggregate_daily_quota():
                     except Exception as ex_clean:
                         print(f"    Error during database cleanup: {ex_clean}")
                     
+                    # Daily Reset of Optimizer targets: Reset is_optimizer = 0 and restore default 1km ~ 3km range
+                    print("  Running Daily Optimizer Reset...")
+                    try:
+                        cursor.execute("""
+                            UPDATE places 
+                            SET is_optimizer = 0,
+                                dist_min_m = 1000,
+                                dist_max_m = 3000,
+                                check_status = 'NORMAL'
+                            WHERE is_optimizer = 1 OR check_status = 'FAIL'
+                        """)
+                        print(f"    Reset {cursor.rowcount} places optimizer status and restored 1km~3km distances for the new day.")
+                    except Exception as ex_reset:
+                        print(f"    Error resetting daily optimizer places: {ex_reset}")
+                    
                     # Automated daily database backup
                     print("  Running Automated Daily Database Backup...")
                     try:

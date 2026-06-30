@@ -49,7 +49,7 @@ class VisibilityOptimizer:
                 elif best_dist_m >= 800:
                     new_min = max(300, best_dist_m - 500)
                 else:
-                    new_min = max(100, best_dist_m - 200)
+                    new_min = max(300, best_dist_m - 200)
                 
                 cursor.execute("""
                     UPDATE places 
@@ -66,14 +66,37 @@ class VisibilityOptimizer:
             conn.close()
 
     def update_place_failed(self, dest_id, name):
-        """가시거리 확보 실패: 여전히 케어 모드 유지하되 점검 시간 및 최단거리만 업데이트"""
-        is_competitive = bool(re.search(r'누수|청소|하수구|변기|이사|싱크대|뚫음', name))
-        dist_min = 10 if is_competitive else 100
-        dist_max = 100 if is_competitive else 300
-        
+        """가시거리 확보 실패: 점진적으로 가시거리를 좁힘 (최소 100m ~ 300m 제한)"""
         conn = pymysql.connect(**DB_CONFIG, autocommit=True)
         try:
             with conn.cursor() as cursor:
+                # 1. 현재 설정된 거리 확인
+                cursor.execute("SELECT dist_min_m, dist_max_m FROM places WHERE dest_id = %s", (dest_id,))
+                row = cursor.fetchone()
+                
+                curr_min = 1000
+                curr_max = 3000
+                if row:
+                    curr_min = int(row['dist_min_m']) if row['dist_min_m'] is not None else 1000
+                    curr_max = int(row['dist_max_m']) if row['dist_max_m'] is not None else 3000
+                
+                # 2. 단계적으로 가시거리 좁히기 (10m 주행 방지, 내비게이션 최소 주행거리 확보)
+                if curr_max > 5000:
+                    new_max = 3000
+                    new_min = 1000
+                elif curr_max > 3000:
+                    new_max = 1500
+                    new_min = 500
+                elif curr_max > 1500:
+                    new_max = 800
+                    new_min = 300
+                elif curr_max > 800:
+                    new_max = 500
+                    new_min = 300
+                else:
+                    new_max = 300
+                    new_min = 300
+                    
                 cursor.execute("""
                     UPDATE places 
                     SET check_status = 'FAIL', 
@@ -81,8 +104,8 @@ class VisibilityOptimizer:
                         dist_max_m = %s,
                         last_optimized_at = %s 
                     WHERE dest_id = %s
-                """, (dist_min, dist_max, get_kst_now(), dest_id))
-                print(f"  [STILL-FAILED] {dest_id}: Not found even at 1km. Narrowed range to {dist_min}m ~ {dist_max}m.")
+                """, (new_min, new_max, get_kst_now(), dest_id))
+                print(f"  [STILL-FAILED] {dest_id}: Gradual shrink applied. Range narrowed from {curr_min}m~{curr_max}m to {new_min}m~{new_max}m.")
         finally:
             conn.close()
 
@@ -124,11 +147,13 @@ class VisibilityOptimizer:
                     is_competitive = True
                     break
 
-        # 2. 최근 24시간 내 클라이언트 실패 이력 존재 여부 확인
+        # 2. 최근 24시간 내 클라이언트 실패 이력 존재 여부 및 전날 최종 목적지 거리(last_dist_m) 확인
         conn = pymysql.connect(**DB_CONFIG)
         has_client_failure = False
+        start_dist = 1000
         try:
             with conn.cursor() as cursor:
+                # 최근 24시간 실패 이력 확인
                 cursor.execute("""
                     SELECT SUM(fail_cnt) as total_fail 
                     FROM daily_progress 
@@ -139,36 +164,42 @@ class VisibilityOptimizer:
                     val = row['total_fail'] if isinstance(row, dict) else row[0]
                     if val and int(val) >= 1:
                         has_client_failure = True
+                        
+                # 전날 마지막 최종 목적지(last_dist_m) 확인
+                cursor.execute("""
+                    SELECT last_dist_m 
+                    FROM daily_progress 
+                    WHERE dest_id = %s AND work_date < %s AND success_cnt > 0
+                    ORDER BY work_date DESC LIMIT 1
+                """, (dest_id, get_kst_date()))
+                prev_row = cursor.fetchone()
+                if prev_row and prev_row['last_dist_m']:
+                    start_dist = int(prev_row['last_dist_m'])
+                else:
+                    start_dist = int(place['dist_max_m']) if place.get('dist_max_m') else 1000
         except Exception as e:
-            print(f"  [!] Error checking fail history: {e}")
+            print(f"  [!] Error checking history/last_dist_m: {e}")
         finally:
             conn.close()
             
-        print(f"  -> competitive: {is_competitive}, has_client_failure: {has_client_failure}")
+        print(f"  -> Has client failure: {has_client_failure}, Start Distance: {start_dist}m")
 
-        # 3. 탐색 대상 범위 결정 (가장 가까운 거리부터 먼 거리순으로 점진 테스트)
-        if is_competitive:
-            if has_client_failure:
-                # 경쟁 카테고리 & 실패 발생 시 -> 가장 안전한 단거리 범위로 제한
-                test_ranges = [300, 500, 800]
-            else:
-                # 경쟁 카테고리 -> 최대 3000m 까지만 탐색 제한
-                test_ranges = [300, 500, 800, 1500, 3000]
-        else:
-            if has_client_failure:
-                # 일반 카테고리 & 실패 발생 -> 최대 3000m 까지만 탐색 제한
-                test_ranges = [300, 500, 800, 1500, 3000]
-            else:
-                # 일반 카테고리 정상 상태 -> 최대 10000m 까지 탐색 허용
-                test_ranges = [300, 500, 800, 1500, 3000, 5000, 7000, 10000]
-
-        # 4. 키워드별 가시거리 독립적 탐색 (모든 활성 키워드에 대해 안전하게 도달 가능한 가시거리를 확보하기 위함)
+        # 3. 100m씩 줄이며 최대 5번(500m 감산) 테스트 범위(ranges) 결정 (최소 300m 보장)
+        test_ranges = []
+        curr_d = start_dist
+        for i in range(5):
+            test_ranges.append(curr_d)
+            curr_d -= 100
+            if curr_d < 300:
+                break
+                
+        # 4. 키워드별 가시거리 독립적 탐색
         keyword_best_distances = []
         any_keyword_succeeded = False
         
         for kw in keywords[:2]: # 상위 2개 키워드만 테스트
             best_dist_for_kw = None
-            print(f"  -> Probing keyword: '{kw}'")
+            print(f"  -> Probing keyword: '{kw}' (Test Ranges: {test_ranges})")
             for dist_m in test_ranges:
                 found_at_this_dist = False
                 for _ in range(2):
@@ -202,10 +233,11 @@ class VisibilityOptimizer:
                         print(f"    [!] Search Error: {e}")
                         time.sleep(1)
                 
-                # 가시 순위 기준을 만족하지 못하면 해당 키워드의 탐색 중단
-                if not found_at_this_dist:
-                    print(f"    Not found or unstable at {dist_m}m. Stopping probe for '{kw}'.")
+                # 8등 이내에 들어올 때까지 단계별로 진행 (순위 노출 성공 시 즉시 해당 거리를 채택하고 루프 중단)
+                if found_at_this_dist:
                     break
+                else:
+                    print(f"    Not found or unstable at {dist_m}m. Stepping down 100m...")
             
             if best_dist_for_kw:
                 keyword_best_distances.append(best_dist_for_kw)
