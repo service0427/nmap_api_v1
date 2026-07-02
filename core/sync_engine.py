@@ -103,30 +103,33 @@ def process_sync(site_id, standardized_data, dry_run=False):
                 ensure_place_info(cursor, item['dest_id'], force_update=is_high_failure)
                 
                 if local_fail_cnt >= 2:
-                    # Query the place name to determine category-based narrow range
-                    cursor.execute("SELECT name FROM places WHERE dest_id = %s", (item['dest_id'],))
-                    p_row = cursor.fetchone()
-                    name = p_row['name'] if p_row else ''
+                    cursor.execute("SELECT dist_max_m FROM places WHERE dest_id = %s", (item['dest_id'],))
+                    p_dist_row = cursor.fetchone()
                     
-                    is_competitive = bool(re.search(r'누수|청소|하수구|변기|이사|싱크대|뚫음', name))
-                    dist_min = 10 if is_competitive else 100
-                    dist_max = 100 if is_competitive else 300
-                    
-                    cursor.execute("""
-                        UPDATE places 
-                        SET is_optimizer = 1,
-                            dist_min_m = %s,
-                            dist_max_m = %s
-                        WHERE dest_id = %s 
-                          AND (check_status IS NULL OR check_status != 'VERIFIED' OR last_optimized_at < %s - INTERVAL 6 HOUR)
-                    """, (dist_min, dist_max, item['dest_id'], get_kst_now()))
+                    # 기존 주행 거리가 너무 먼 경우(3km 초과)에만 점진적 케어 시작을 위해 1000m ~ 3000m 범위로 초기화
+                    curr_max = p_dist_row['dist_max_m'] if p_dist_row and p_dist_row['dist_max_m'] is not None else 10000
+                    if curr_max > 3000:
+                        cursor.execute("""
+                            UPDATE places 
+                            SET is_optimizer = 1,
+                                dist_min_m = 1000,
+                                dist_max_m = 3000
+                            WHERE dest_id = %s 
+                        """, (item['dest_id'],))
+                    else:
+                        cursor.execute("""
+                            UPDATE places 
+                            SET is_optimizer = 1
+                            WHERE dest_id = %s 
+                        """, (item['dest_id'],))
                 
-                if 'success_count' in item:
-                    cursor.execute("""
-                        INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m)
-                        VALUES (%s, %s, %s, %s, %s, 0, 0, 800)
-                        ON DUPLICATE KEY UPDATE success_cnt = GREATEST(success_cnt, %s)
-                    """, (get_kst_date(), site_id, item['dest_id'], item['sid'], item['success_count'], item['success_count']))
+                # 모든 슬롯에 대해 daily_progress 생성 및 total_target 동기화
+                succ_cnt = item.get('success_count') or 0
+                cursor.execute("""
+                    INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, total_target)
+                    VALUES (%s, %s, %s, %s, %s, 0, 0, 800, %s)
+                    ON DUPLICATE KEY UPDATE total_target = VALUES(total_target), success_cnt = GREATEST(success_cnt, VALUES(success_cnt))
+                """, (get_kst_date(), site_id, item['dest_id'], item['sid'], succ_cnt, item['work_count']))
                 
                 # 1일 1회성 등 검색어(search_keyword) 유입 누락 시 places.name으로 자동 보완
                 search_keyword = item.get('search_keyword') or ''
