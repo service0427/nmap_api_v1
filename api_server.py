@@ -45,7 +45,7 @@ db_pool = PooledDB(
 )
 
 # --- Legacy DB Pool for Dual Writing (Removable/Toggleable Sync) ---
-ENABLE_LEGACY_SYNC = True
+ENABLE_LEGACY_SYNC = False
 legacy_db_pool = None
 
 if ENABLE_LEGACY_SYNC:
