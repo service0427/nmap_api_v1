@@ -559,8 +559,8 @@ async def request_task(req: TaskRequest):
                     group_fail.sort(key=lambda x: x['fail_cnt'], reverse=True)
                     task = random.choice(group_fail[:max(1, len(group_fail)//2 + 1)])
                 elif group_rest:
-                    # 성공 횟수가 적은 순으로 정렬 후 상위권에서 랜덤 선택
-                    group_rest.sort(key=lambda x: x['total_success'])
+                    # 달성률(성공 횟수 / 목표 할당량)이 낮은 순으로 정렬 후 상위권에서 랜덤 선택
+                    group_rest.sort(key=lambda x: (x['total_success'] / x['total_target']) if x['total_target'] > 0 else 0)
                     task = random.choice(group_rest[:max(1, len(group_rest)//2 + 1)])
                 else: 
                     log_allocation_failure(cursor, req.device_id, "NO_TASK_AVAILABLE", client_ip or "unknown", req.dict())

@@ -146,15 +146,19 @@ async def request_task(req: TaskRequest, request: Request):
                     candidate_lists.append(sorted_fails)
                     
                 if group_rest:
-                    # Group by total_success (ascending) and shuffle each bucket to avoid patterns
-                    success_buckets = {}
+                    # Group by achievement rate (ascending in 10% buckets) and shuffle each bucket to avoid patterns
+                    rate_buckets = {}
                     for cand in group_rest:
-                        ts = cand['total_success']
-                        success_buckets.setdefault(ts, []).append(cand)
+                        target = cand['total_target']
+                        success = cand['total_success']
+                        rate = success / target if target > 0 else 0
+                        # Map to bucket index 0 to 9 (e.g. rate 0.25 -> bucket 2)
+                        bucket_idx = min(9, int(rate * 10))
+                        rate_buckets.setdefault(bucket_idx, []).append(cand)
                     
                     sorted_rests = []
-                    for ts in sorted(success_buckets.keys()):
-                        bucket = success_buckets[ts]
+                    for idx in sorted(rate_buckets.keys()):
+                        bucket = rate_buckets[idx]
                         random.shuffle(bucket)
                         sorted_rests.extend(bucket)
                     candidate_lists.append(sorted_rests)
