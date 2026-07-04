@@ -89,6 +89,11 @@ async def request_task(req: TaskRequest, request: Request):
                       AND r.status = 'on'
                       AND r.is_deleted = 0
                       AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
+                      AND (
+                          SELECT IFNULL(SUM(success_cnt), 0) 
+                          FROM daily_progress 
+                          WHERE dest_id = dp.dest_id AND work_date = dp.work_date
+                      ) < 20
                       {status_condition}
                       {opt_condition}
                 """
@@ -210,7 +215,11 @@ async def request_task(req: TaskRequest, request: Request):
                           AND r.status = 'on'
                           AND r.is_deleted = 0
                           AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
-                          AND dp.success_cnt < 20
+                          AND (
+                              SELECT IFNULL(SUM(success_cnt), 0) 
+                              FROM daily_progress 
+                              WHERE dest_id = dp.dest_id AND work_date = dp.work_date
+                          ) < 20
                           {status_condition}
                           {opt_condition}
                     """

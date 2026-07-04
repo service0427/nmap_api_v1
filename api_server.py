@@ -524,6 +524,11 @@ async def request_task(req: TaskRequest):
                       AND r.status = 'on'
                       AND r.is_deleted = 0
                       AND p.check_status IN ('VERIFIED', 'NORMAL')
+                      AND (
+                          SELECT IFNULL(SUM(success_cnt), 0) 
+                          FROM daily_progress 
+                          WHERE dest_id = dp.dest_id AND work_date = dp.work_date
+                      ) < 20
                 """
                 params = [kst_date, kst_date]
                 if req.site_id: base_query += " AND r.site_id = %s"; params.append(req.site_id)
