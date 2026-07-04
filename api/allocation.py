@@ -174,7 +174,7 @@ async def request_task(req: TaskRequest, request: Request):
                                 SELECT id, lat, lng, dist_m 
                                 FROM task_position_pool 
                                 WHERE dest_id = %s AND created_date = %s AND is_used = 0
-                                  AND (actual_rank BETWEEN 1 AND 8 OR actual_rank = -1)
+                                  AND (actual_rank BETWEEN 1 AND 8)
                                 ORDER BY id ASC 
                                 LIMIT 1
                             """, (cand['dest_id'], kst_date))
@@ -210,6 +210,7 @@ async def request_task(req: TaskRequest, request: Request):
                           AND r.status = 'on'
                           AND r.is_deleted = 0
                           AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
+                          AND dp.success_cnt < 20
                           {status_condition}
                           {opt_condition}
                     """
