@@ -116,6 +116,7 @@ def aggregate_daily_quota():
                       AND s.is_deleted = 0
                       AND %s BETWEEN s.start_date AND s.end_date
                     ON DUPLICATE KEY UPDATE 
+                        dest_id = VALUES(dest_id),
                         total_target = VALUES(total_target),
                         updated_at = %s;
                 """

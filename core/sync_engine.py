@@ -128,7 +128,7 @@ def process_sync(site_id, standardized_data, dry_run=False):
                 cursor.execute("""
                     INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, total_target)
                     VALUES (%s, %s, %s, %s, %s, 0, 0, 800, %s)
-                    ON DUPLICATE KEY UPDATE total_target = VALUES(total_target), success_cnt = GREATEST(success_cnt, VALUES(success_cnt))
+                    ON DUPLICATE KEY UPDATE dest_id = VALUES(dest_id), total_target = VALUES(total_target), success_cnt = GREATEST(success_cnt, VALUES(success_cnt))
                 """, (get_kst_date(), site_id, item['dest_id'], item['sid'], succ_cnt, item['work_count']))
                 
                 # 1일 1회성 등 검색어(search_keyword) 유입 누락 시 places.name으로 자동 보완
