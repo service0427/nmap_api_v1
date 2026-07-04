@@ -126,46 +126,51 @@ class NaverPlaceScraper:
             data_obj = json_data.get("data") or {}
             poi_data = data_obj.get("placeDetail") or {}
             name = poi_data.get("name")
-            addr = poi_data.get("address", {}).get("address") if poi_data.get("address") else None
+            addr_info = poi_data.get("address") or {}
+            road_addr = addr_info.get("roadAddress")
+            addr = addr_info.get("address")
             
             if not name:
                 return {"error": "no_name", "message": "장소 이름을 찾을 수 없음"}
 
+            lat = None
+            lng = None
+            final_addr = road_addr or addr or ""
+            
             search_res = self._mobile_search(name)
             places = search_res.get("place", [])
             match = next((p for p in places if p.get("id") == place_id), None)
-
-            if not match and addr:
-                addr_res = self._mobile_search(addr)
-                addr_list = addr_res.get("address", [])
-                if addr_list:
-                    anchor_lat = addr_list[0]['y']
-                    anchor_lng = addr_list[0]['x']
-                    search_res_v2 = self._mobile_search(name, lat=anchor_lat, lng=anchor_lng)
-                    places_v2 = search_res_v2.get("place", [])
-                    match = next((p for p in places_v2 if p.get("id") == place_id), None)
-
-            # 최종 데이터 추출
+            
             if match:
-                # shortAddress는 리스트 형태 (예: ["경기", "수원시", ...])
+                lat = float(match.get("y") or 0)
+                lng = float(match.get("x") or 0)
                 short_addr_list = match.get("shortAddress", [])
                 if isinstance(short_addr_list, list) and short_addr_list:
-                    # 실제 앱 검색 결과와 동일한 shortAddress 기반 주소
                     final_addr = " ".join(short_addr_list)
                 else:
-                    # 백업: roadAddress 또는 jibunAddress
-                    final_addr = match.get("roadAddress") or match.get("jibunAddress")
-
-                return {
-                    "id": match.get("id"),
-                    "name": match.get("title"),
-                    "address": final_addr,
-                    "original_address": addr,
-                    "lng": float(match.get("x") or 0),
-                    "lat": float(match.get("y") or 0)
-                }
+                    final_addr = match.get("roadAddress") or match.get("jibunAddress") or final_addr
             else:
-                return {"error": "not_found", "message": "검색 결과 매칭 실패"}
+                # 상호명 검색 매칭에 실패했어도 directionsPOI에서 이름이 나왔으므로 생존한 플레이스임.
+                # 주소 지오코딩으로 위경도 좌표만 백업 추출
+                if addr:
+                    addr_res = self._mobile_search(addr)
+                    addr_list = addr_res.get("address", [])
+                    if addr_list:
+                        lat = float(addr_list[0]['y'])
+                        lng = float(addr_list[0]['x'])
+
+            if lat is None or lng is None:
+                lat = 0.0
+                lng = 0.0
+                
+            return {
+                "id": place_id,
+                "name": name,
+                "address": final_addr,
+                "original_address": addr or road_addr or "",
+                "lng": lng,
+                "lat": lat
+            }
 
         except Exception as e:
             return {"error": "exception", "message": str(e)}
