@@ -531,7 +531,6 @@ async def request_task(req: TaskRequest):
                 
                 base_query += """
                     AND (dp.total_target - dp.success_cnt) > 0 
-                    AND dp.fail_cnt < 10
                 """
                 cursor.execute(base_query, tuple(params))
                 all_raw_candidates = cursor.fetchall()

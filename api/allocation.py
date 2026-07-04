@@ -78,7 +78,7 @@ async def request_task(req: TaskRequest, request: Request):
                         p.arr_min_s, p.arr_max_s, p.dist_min_m, p.dist_max_m, p.check_status, p.is_optimizer,
                         dp.total_target, dp.success_cnt as total_success,
                         (dp.total_target - dp.success_cnt) as remain_count,
-                        dp.fail_cnt, dp.alloc_fail_cnt,
+                        dp.fail_cnt, dp.alloc_fail_cnt, dp.miss_cnt,
                         dp.last_dist_m,
                         r.search_keyword
                     FROM raw_slots r
@@ -101,7 +101,6 @@ async def request_task(req: TaskRequest, request: Request):
                 
                 base_query += """
                     AND (dp.total_target - dp.success_cnt) > 0 
-                    AND dp.fail_cnt < 10
                 """
                 cursor.execute(base_query, tuple(params))
                 all_raw_candidates = cursor.fetchall()
@@ -165,8 +164,8 @@ async def request_task(req: TaskRequest, request: Request):
                         if not cand['lat'] or not cand['lng']:
                             continue
                         
-                        if bool(cand['is_optimizer']):
-                            # Optimizer tasks MUST have pre-made coordinates in the pool
+                        # miss_cnt > 2 이거나 is_optimizer = 1 인 경우 -> 무조건 검증된 풀(Pool)에서만 할당 가능
+                        if cand.get('miss_cnt', 0) > 2 or bool(cand['is_optimizer']):
                             cursor.execute("""
                                 SELECT id, lat, lng, dist_m 
                                 FROM task_position_pool 
@@ -180,6 +179,7 @@ async def request_task(req: TaskRequest, request: Request):
                                 task = cand
                                 pool_row = p_row
                                 break
+                            # 만약 풀에 검증된 좌표가 없다면, 할당하지 않고 다음 후보로 넘어감 (스킵)
                         else:
                             # Normal tasks are always valid (dynamic fallback calculation)
                             task = cand
@@ -195,7 +195,7 @@ async def request_task(req: TaskRequest, request: Request):
                             dp.site_id, dp.sid, dp.dest_id, p.name, p.address, p.lat, p.lng, 
                             p.arr_min_s, p.arr_max_s, p.dist_min_m, p.dist_max_m, p.check_status, p.is_optimizer,
                             dp.total_target, dp.success_cnt as total_success,
-                            dp.fail_cnt, dp.alloc_fail_cnt,
+                            dp.fail_cnt, dp.alloc_fail_cnt, dp.miss_cnt,
                             dp.last_dist_m,
                             r.search_keyword
                         FROM raw_slots r
@@ -206,7 +206,6 @@ async def request_task(req: TaskRequest, request: Request):
                           AND r.status = 'on'
                           AND r.is_deleted = 0
                           AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
-                          AND dp.fail_cnt < 10
                           {status_condition}
                           {opt_condition}
                     """
@@ -235,7 +234,8 @@ async def request_task(req: TaskRequest, request: Request):
                             if not cand['lat'] or not cand['lng']:
                                 continue
                             
-                            if bool(cand['is_optimizer']):
+                            # miss_cnt > 2 이거나 is_optimizer = 1 인 경우 -> 무조건 검증된 풀(Pool)에서만 할당 가능
+                            if cand.get('miss_cnt', 0) > 2 or bool(cand['is_optimizer']):
                                 cursor.execute("""
                                     SELECT id, lat, lng, dist_m 
                                     FROM task_position_pool 
@@ -275,8 +275,9 @@ async def request_task(req: TaskRequest, request: Request):
                 if final_arrival_s < 300: 
                     final_arrival_s = 300
 
-                final_lat, final_lng, final_dist, final_speed, found_visible, search_keyword = 0.0, 0.0, 0.0, 0.0, False, keywords[0]
-                d_min_m, d_max_m = int(task['dist_min_m']), min(int(task['dist_max_m']), 10000)
+                final_lat, final_lng, final_dist, found_visible, search_keyword = 0.0, 0.0, 0.0, False, keywords[0]
+                d_min_m = max(3000, int(task['dist_min_m']))
+                d_max_m = min(15000, max(d_min_m, int(task['dist_max_m'])))
 
                 if pool_row:
                     final_lat = float(pool_row['lat'])
@@ -291,9 +292,9 @@ async def request_task(req: TaskRequest, request: Request):
                     logger.info(f"[*] Dynamic Allocation for: {task['name']} (dist: {final_dist}m)")
                 
                 final_speed = round((final_dist / 1000.0) / (final_arrival_s / 3600.0), 2)
-                if final_speed < 10.0:
-                    final_arrival_s = max(60, int((final_dist / 1000.0) / 10.0 * 3600))
-                    final_speed = 10.0
+                if final_speed < 3.0:
+                    final_arrival_s = max(60, int((final_dist / 1000.0) / 3.0 * 3600))
+                    final_speed = 3.0
                 elif final_speed > 80.0:
                     final_arrival_s = int((final_dist / 1000.0) / 80.0 * 3600)
                     final_speed = 80.0
