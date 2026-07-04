@@ -15,14 +15,23 @@ export function initGrids() {
       { 
         field: "name", 
         headerName: "상호", 
-        width: 220, 
+        width: 260,
         filter: true,
         cellRenderer: p => {
           const name = p.value || '';
+          const style = "cursor:pointer; text-decoration:underline; font-weight:600; color:var(--text-main); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;";
+          const adjustedBadge = p.data.is_adjusted ? `<span class="badge warning" style="font-weight:800; font-size:0.75rem; padding:0.15rem 0.35rem; margin-right:0.3rem; flex-shrink:0;" title="일일 총 한도 제한에 의해 작업 개수가 조율/감소되었습니다.">[한도]</span>` : '';
+          
+          let deleteBadge = '';
           if (name.startsWith('FAILED_SCRAPE_') || p.data.check_status === 'FAIL') {
-            return `<span class="badge danger" style="font-weight:800; font-size:0.75rem; padding:0.15rem 0.35rem; margin-right:0.3rem;">[지도 삭제/폐업]</span><span style="color:var(--danger-color); font-weight:700;">${name}</span>`;
+            deleteBadge = `<span class="badge danger" style="font-weight:800; font-size:0.75rem; padding:0.15rem 0.35rem; margin-right:0.3rem; flex-shrink:0;">[지도 삭제/폐업]</span>`;
           }
-          return name;
+          
+          return `<div style="display:inline-flex; align-items:center; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            ${deleteBadge}
+            ${adjustedBadge}
+            <span style="${style}" onclick="window.openDestinationDetailModal('${p.data.dest_id}')">${name}</span>
+          </div>`;
         }
       },
       { 
@@ -72,6 +81,9 @@ export function initGrids() {
           if (target === 0) return "0.0%";
           return ((success / target) * 100).toFixed(1) + "%";
         },
+        comparator: (valueA, valueB) => {
+          return (parseFloat(valueA) || 0) - (parseFloat(valueB) || 0);
+        },
         cellRenderer: p => {
           const target = p.data.target || 0;
           const success = p.data.success || 0;
@@ -91,6 +103,18 @@ export function initGrids() {
         headerName: "어제 실패", 
         width: 100,
         valueFormatter: p => p.value || 0
+      },
+      { 
+        field: "max_total_limit", 
+        headerName: "일일 제한", 
+        width: 100,
+        valueFormatter: p => p.value !== null && p.value !== undefined ? p.value : 20
+      },
+      { 
+        field: "max_active_slots", 
+        headerName: "슬롯 분산", 
+        width: 100,
+        valueFormatter: p => p.value !== null && p.value !== undefined ? p.value : 4
       },
       { 
         field: "is_optimizer", 
