@@ -318,6 +318,7 @@ async def request_task(req: TaskRequest, request: Request):
                 original_id = {"ssaid": device_row["orig_ssaid"], "adid": device_row["orig_adid"], "idfv": device_row["orig_idfv"], "ni": device_row["orig_ni"], "token": device_row["orig_token"]}
 
                 task_sid = task['sid']
+                checked_rank = pool_row['actual_rank'] if pool_row else None
 
                 # 6. Final Insertion & Response
                 msg_str = f"Start: {final_lat},{final_lng} | GoalTime: {final_arrival_s}s | Speed: {final_speed}km/h | Keyword: {search_keyword}"
@@ -326,9 +327,17 @@ async def request_task(req: TaskRequest, request: Request):
                     logger.info(f"[*] Excess-based Allocation for: {task['name']} (dist: {final_dist}m)")
 
                 cursor.execute("""
-                    INSERT INTO tasks_log (work_date, site_id, sid, dest_id, dest_name, device_id, ip, spoofed_identity, status, result_msg, start_time, distance_m, speed_kmh, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WORKING', %s, %s, %s, %s, %s)
-                """, (kst_date, task['site_id'], task_sid, task['dest_id'], task['name'], req.device_id, client_ip, json.dumps(spoofed_id), msg_str, kst_now, int(final_dist), final_speed, kst_now))
+                    INSERT INTO tasks_log (
+                        work_date, site_id, sid, dest_id, dest_name, device_id, ip, spoofed_identity, 
+                        status, result_msg, start_time, distance_m, start_lat, start_lng, checked_rank, 
+                        speed_kmh, created_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WORKING', %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    kst_date, task['site_id'], task_sid, task['dest_id'], task['name'], req.device_id, client_ip, json.dumps(spoofed_id), 
+                    msg_str, kst_now, int(final_dist), final_lat, final_lng, checked_rank, 
+                    final_speed, kst_now
+                ))
                 
                 v1_task_id = cursor.connection.insert_id()
 
