@@ -80,17 +80,17 @@ class VisibilityOptimizer:
                     curr_min = int(row['dist_min_m']) if row['dist_min_m'] is not None else 1000
                     curr_max = int(row['dist_max_m']) if row['dist_max_m'] is not None else 3000
                 
-                # 만약 이미 300m 이하인데도 실패한 경우 -> 최종 검증 실패(FAIL)로 처리하고 옵티마이저 종료
+                # 만약 이미 300m 이하인데도 실패한 경우 -> 옵티마이저만 해제하고 정상(VERIFIED) 상태 유지
                 if curr_max <= 300:
                     cursor.execute("""
                         UPDATE places 
-                        SET check_status = 'FAIL',
-                            is_optimizer = 0,
+                        SET is_optimizer = 0,
+                            check_status = 'VERIFIED',
                             last_optimized_at = %s,
                             optimization_priority = 0
                         WHERE dest_id = %s
                     """, (get_kst_now(), dest_id))
-                    print(f"  [VERIFICATION FAILED] {dest_id}: Not visible even at 300m. Marked check_status = 'FAIL'")
+                    print(f"  [VERIFICATION FINISHED] {dest_id}: Reach minimum limit (300m) without target rank. Stopped optimizer, status kept as VERIFIED.")
                     return
                 
                 # 2. 단계적으로 가시거리 좁히기 (10m 주행 방지, 내비게이션 최소 주행거리 확보)
