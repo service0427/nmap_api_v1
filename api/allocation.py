@@ -176,7 +176,7 @@ async def request_task(req: TaskRequest, request: Request):
                         # miss_cnt > 2 이거나 is_optimizer = 1 인 경우 -> 무조건 검증된 풀(Pool)에서만 할당 가능
                         if cand.get('miss_cnt', 0) > 2 or bool(cand['is_optimizer']):
                             cursor.execute("""
-                                SELECT id, lat, lng, dist_m 
+                                SELECT id, lat, lng, dist_m, actual_rank 
                                 FROM task_position_pool 
                                 WHERE dest_id = %s AND created_date = %s AND is_used = 0
                                   AND (actual_rank BETWEEN 1 AND 8)
@@ -251,7 +251,7 @@ async def request_task(req: TaskRequest, request: Request):
                             # miss_cnt > 2 이거나 is_optimizer = 1 인 경우 -> 무조건 검증된 풀(Pool)에서만 할당 가능
                             if cand.get('miss_cnt', 0) > 2 or bool(cand['is_optimizer']):
                                 cursor.execute("""
-                                    SELECT id, lat, lng, dist_m 
+                                    SELECT id, lat, lng, dist_m, actual_rank 
                                     FROM task_position_pool 
                                     WHERE dest_id = %s AND created_date = %s AND is_used = 0
                                       AND (actual_rank BETWEEN 1 AND 8)
