@@ -275,6 +275,61 @@ export function copyDeviceCode() {
   });
 }
 
+export async function openDestinationDetailModal(destId) {
+  const modal = document.getElementById("dest-detail-modal");
+  if (!modal || !state.rawDestinations) return;
+
+  const d = state.rawDestinations.find(x => x.dest_id === destId);
+  if (!d) return;
+
+  // Set Inputs
+  document.getElementById("detail-dest-id").value = d.dest_id;
+  document.getElementById("detail-dest-id-text").innerText = d.dest_id;
+  document.getElementById("detail-dest-name").innerText = d.name || "이름 없음";
+
+  // 기본값 설정 (NULL일 경우 각각 1000과 4가 기본값으로 입력되도록 설정)
+  document.getElementById("detail-dest-total-limit").value = d.max_total_limit !== null && d.max_total_limit !== undefined ? d.max_total_limit : 1000;
+  document.getElementById("detail-dest-active-slots").value = d.max_active_slots !== null && d.max_active_slots !== undefined ? d.max_active_slots : 4;
+  document.getElementById("detail-dest-optimizer-check").checked = !!d.is_optimizer;
+
+  modal.style.display = "flex";
+}
+
+export async function saveDestinationDetailInfo() {
+  const destIdVal = document.getElementById("detail-dest-id").value;
+  const maxTotalLimit = parseInt(document.getElementById("detail-dest-total-limit").value, 10);
+  const maxActiveSlots = parseInt(document.getElementById("detail-dest-active-slots").value, 10);
+  const isOptimizer = document.getElementById("detail-dest-optimizer-check").checked ? 1 : 0;
+
+  if (isNaN(maxTotalLimit) || maxTotalLimit < 0) {
+    alert("일일 총 작업 제한은 0 이상의 숫자여야 합니다.");
+    return;
+  }
+  if (isNaN(maxActiveSlots) || maxActiveSlots < 0) {
+    alert("최대 활성 슬롯 제한은 0 이상의 숫자여야 합니다.");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/v1/admin/dest/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dest_id: destIdVal,
+        max_total_limit: maxTotalLimit,
+        max_active_slots: maxActiveSlots,
+        is_optimizer: isOptimizer
+      })
+    });
+    if (!res.ok) throw new Error("Destination update failed");
+    
+    document.getElementById("dest-detail-modal").style.display = "none";
+    window.fetchData(true);
+  } catch (err) {
+    alert("설정 저장 실패: " + err.message);
+  }
+}
+
 // Bind to window for HTML click handlers
 window.openDeviceDetailModal = openDeviceDetailModal;
 window.openEditDeviceGroupModal = openEditDeviceGroupModal;
@@ -282,3 +337,5 @@ window.saveDetailDeviceInfo = saveDetailDeviceInfo;
 window.toggleDetailMute = toggleDetailMute;
 window.copyDeviceCode = copyDeviceCode;
 window.copyDeviceID = copyDeviceCode;
+window.openDestinationDetailModal = openDestinationDetailModal;
+window.saveDestinationDetailInfo = saveDestinationDetailInfo;

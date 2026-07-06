@@ -108,7 +108,7 @@ export function initGrids() {
         field: "max_total_limit", 
         headerName: "일일 제한", 
         width: 100,
-        valueFormatter: p => p.value !== null && p.value !== undefined ? p.value : 20
+        valueFormatter: p => p.value !== null && p.value !== undefined ? p.value : 1000
       },
       { 
         field: "max_active_slots", 
