@@ -57,3 +57,9 @@ class Config:
     def get_api_port():
         load_dotenv(ENV_PATH)
         return int(os.getenv('API_PORT', 8000))
+
+    @staticmethod
+    def get_dest_success_limit():
+        load_dotenv(ENV_PATH)
+        return int(os.getenv('DEST_SUCCESS_LIMIT', 1000))
+

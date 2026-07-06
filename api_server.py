@@ -480,6 +480,7 @@ async def request_task(req: TaskRequest):
     request_counter += 1
     active_devices.add(req.device_id)
     kst_now, kst_date = get_kst_now(), get_kst_date()
+    success_limit = Config.get_dest_success_limit()
     client_ip = req.ip if req.ip and req.ip != "0.0.0.0" and req.ip != "unknown" else None
     
     try:
@@ -528,7 +529,7 @@ async def request_task(req: TaskRequest):
                           SELECT IFNULL(SUM(success_cnt), 0) 
                           FROM daily_progress 
                           WHERE dest_id = dp.dest_id AND work_date = dp.work_date
-                      ) < 20
+                      ) < {success_limit}
                 """
                 params = [kst_date, kst_date]
                 if req.site_id: base_query += " AND r.site_id = %s"; params.append(req.site_id)
