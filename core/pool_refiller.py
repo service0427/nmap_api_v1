@@ -113,6 +113,7 @@ def refill_pool():
                     SELECT COUNT(*) as cnt 
                     FROM task_position_pool 
                     WHERE dest_id = %s AND created_date = %s AND is_used = 0
+                      AND (actual_rank BETWEEN 1 AND 8)
                 """, (dest_id, kst_date))
                 current_pool = cursor.fetchone()['cnt']
                 
@@ -156,13 +157,7 @@ def refill_pool():
                                     actual_rank = i + 1
                                     break
                             
-                            # Determine strict maximum rank threshold based on distance
-                            if real_d >= 5000:
-                                max_allowed_rank = 3
-                            elif real_d >= 1500:
-                                max_allowed_rank = 5
-                            else:
-                                max_allowed_rank = 8
+                            max_allowed_rank = 8
                                 
                             # Backup keyword check if not found or rank too low
                             if actual_rank is None or actual_rank > max_allowed_rank:
