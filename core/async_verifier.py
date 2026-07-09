@@ -67,6 +67,29 @@ def run_async_verification():
                     lng = info['lng']
                     is_opt = 1 if re.search(r'누수|청소|하수구|변기|이사|싱크대|뚫음', name) else 0
                     
+                    # 주소가 비어있거나 한국 위경도 범위를 벗어나는 해외 업체의 경우 강제 FAIL 처리
+                    is_invalid = False
+                    if not address or address.strip() == '':
+                        is_invalid = True
+                    else:
+                        try:
+                            lat_f = float(lat)
+                            lng_f = float(lng)
+                            # 대한민국 위경도 대략적 한계 범위 (위도 33~39, 경도 124~132)
+                            if not (33.0 <= lat_f <= 39.0 and 124.0 <= lng_f <= 132.0):
+                                is_invalid = True
+                        except:
+                            is_invalid = True
+
+                    if is_invalid:
+                        print(f"  [INVALID_PLACE] {dest_id} -> No address or foreign coordinates (lat: {lat}, lng: {lng}). Flagging as FAIL.")
+                        cursor.execute("""
+                            UPDATE places 
+                            SET check_status = 'FAIL', fail_count = 0, name = %s, last_checked_at = %s
+                            WHERE dest_id = %s
+                        """, (f"INVALID_ADDR_{dest_id}", get_kst_now(), dest_id))
+                        continue
+                    
                     # Check if anything changed
                     cursor.execute("SELECT name, address, original_address, lat, lng FROM places WHERE dest_id = %s", (dest_id,))
                     old_row = cursor.fetchone()
@@ -84,17 +107,15 @@ def run_async_verification():
                     else:
                         changed = True
                             
-                    # If details changed, we reset failures. Otherwise, we keep them!
-                    new_fail_count = 0 if changed else (item.get('fail_count') or 0)
-                    
-                    # 2. places 테이블 업데이트 (VERIFIED)
+                    # 2. places 테이블 업데이트 (VERIFIED, fail_count는 0으로 고정)
                     cursor.execute("""
                         UPDATE places 
                         SET name = %s, address = %s, original_address = %s, 
-                            lat = %s, lng = %s, check_status = 'VERIFIED', is_optimizer = %s,
-                            fail_count = %s, last_checked_at = %s
+                            lat = %s, lng = %s, check_status = 'VERIFIED', 
+                            is_optimizer = IF(is_optimizer = 1, 1, %s),
+                            fail_count = 0, last_checked_at = %s
                         WHERE dest_id = %s
-                    """, (name, address, original_address, lat, lng, is_opt, new_fail_count, get_kst_now(), dest_id))
+                    """, (name, address, original_address, lat, lng, is_opt, get_kst_now(), dest_id))
                     
                     # 2b. daily_progress 테이블의 오늘 실패 카운트 초기화 (정보 변경 시에만 자동 잠금 해제)
                     if changed:
@@ -115,22 +136,14 @@ def run_async_verification():
                     print(f"  [SUCCESS] {dest_id} -> {name} (VERIFIED)")
                 else:
                     err_msg = info.get('message') if info else "Unknown error"
-                    curr_fail = (item.get('fail_count') or 0) + 1
-                    print(f"  [FAILED] {dest_id} -> Scrape failed: {err_msg} (Fail Count: {curr_fail})")
+                    print(f"  [FAILED] {dest_id} -> Scrape failed: {err_msg}")
                     
-                    # fail_count가 3 미만이면 PENDING 상태 유지, 3 이상이면 FAIL로 변경
-                    if curr_fail < 3:
-                        cursor.execute("""
-                            UPDATE places 
-                            SET fail_count = %s, last_checked_at = %s
-                            WHERE dest_id = %s
-                        """, (curr_fail, get_kst_now(), dest_id))
-                    else:
-                        cursor.execute("""
-                            UPDATE places 
-                            SET check_status = 'FAIL', fail_count = %s, name = %s, last_checked_at = %s
-                            WHERE dest_id = %s
-                        """, (curr_fail, f"FAILED_SCRAPE_{dest_id}", get_kst_now(), dest_id))
+                    # fail_count 관리 배제: 상태는 PENDING 유지, fail_count는 0으로 초기화/유지하고, last_checked_at만 갱신
+                    cursor.execute("""
+                        UPDATE places 
+                        SET check_status = 'PENDING', fail_count = 0, last_checked_at = %s
+                        WHERE dest_id = %s
+                    """, (get_kst_now(), dest_id))
                     
     except Exception as e:
         print(f"[Async Verifier] Exception during run: {e}")

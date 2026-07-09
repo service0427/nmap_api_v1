@@ -113,13 +113,19 @@ async def report_result(report: ResultReport, request: Request):
                         task_row['distance_m'], kst_now
                     ))
                     
-                    # Immediately flag places.is_optimizer = 1 if miss_cnt >= 2
+                    # If miss_cnt >= 2, trigger re-verification, activate optimizer, and shrink distance without clearing details
                     cursor.execute("""
                         UPDATE places p
                         JOIN daily_progress dp ON p.dest_id = dp.dest_id
-                        SET p.is_optimizer = 1
+                        SET p.check_status = 'PENDING',
+                            p.is_optimizer = 1,
+                            p.dist_min_m = IF(p.dist_max_m > 3000, 1000, p.dist_min_m),
+                            p.dist_max_m = IF(p.dist_max_m > 3000, 3000, p.dist_max_m),
+                            p.last_checked_at = NULL
                         WHERE dp.dest_id = %s AND dp.work_date = %s AND dp.miss_cnt >= 2
                     """, (task_row['dest_id'], kst_date))
+                    
+                    logger.info(f"[*] Real-time Optimizer Activated for dest_id: {task_row['dest_id']} (miss_cnt >= 2)")
                     
 
             return {"status": "REPORTED"}
@@ -234,11 +240,13 @@ async def update_status(data: StatusUpdate, request: Request):
                                 task_row['distance_m'], kst_now
                             ))
 
-                            # Immediately flag places.is_optimizer = 1 if miss_cnt >= 2
+                            # Immediately flag places.is_optimizer = 1 and shrink distance if miss_cnt >= 2
                             cursor.execute("""
                                 UPDATE places p
                                 JOIN daily_progress dp ON p.dest_id = dp.dest_id
-                                SET p.is_optimizer = 1
+                                SET p.is_optimizer = 1,
+                                    p.dist_min_m = IF(p.dist_max_m > 3000, 1000, p.dist_min_m),
+                                    p.dist_max_m = IF(p.dist_max_m > 3000, 3000, p.dist_max_m)
                                 WHERE dp.dest_id = %s AND dp.work_date = %s AND dp.miss_cnt >= 2
                             """, (task_row['dest_id'], kst_date))
 
