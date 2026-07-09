@@ -125,6 +125,13 @@ async def report_result(report: ResultReport, request: Request):
                         WHERE dp.dest_id = %s AND dp.work_date = %s AND dp.miss_cnt >= 2
                     """, (task_row['dest_id'], kst_date))
                     
+                    # Purge pool coordinates exceeding new max distance
+                    cursor.execute("""
+                        DELETE FROM task_position_pool 
+                        WHERE dest_id = %s 
+                          AND dist_m > (SELECT dist_max_m FROM places WHERE dest_id = %s)
+                    """, (task_row['dest_id'], task_row['dest_id']))
+                    
                     logger.info(f"[*] Real-time Optimizer Activated for dest_id: {task_row['dest_id']} (miss_cnt >= 2)")
                     
 
@@ -249,6 +256,13 @@ async def update_status(data: StatusUpdate, request: Request):
                                     p.dist_max_m = IF(p.dist_max_m > 3000, 3000, p.dist_max_m)
                                 WHERE dp.dest_id = %s AND dp.work_date = %s AND dp.miss_cnt >= 2
                             """, (task_row['dest_id'], kst_date))
+
+                            # Purge pool coordinates exceeding new max distance
+                            cursor.execute("""
+                                DELETE FROM task_position_pool 
+                                WHERE dest_id = %s 
+                                  AND dist_m > (SELECT dist_max_m FROM places WHERE dest_id = %s)
+                            """, (task_row['dest_id'], task_row['dest_id']))
 
         return {"status": "UPDATED"}
     except Exception as e: 

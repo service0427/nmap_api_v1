@@ -116,6 +116,7 @@ def process_sync(site_id, standardized_data, dry_run=False):
                                 dist_max_m = 3000
                             WHERE dest_id = %s 
                         """, (item['dest_id'],))
+                        cursor.execute("DELETE FROM task_position_pool WHERE dest_id = %s AND dist_m > 3000", (item['dest_id'],))
                     else:
                         cursor.execute("""
                             UPDATE places 

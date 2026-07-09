@@ -61,6 +61,7 @@ class VisibilityOptimizer:
                         optimization_priority = 0
                     WHERE dest_id = %s
                 """, (new_max, new_min, get_kst_now(), dest_id))
+                cursor.execute("DELETE FROM task_position_pool WHERE dest_id = %s", (dest_id,))
                 print(f"  [GRADUATED] {dest_id}: Range {new_min}m ~ {new_max}m")
         finally:
             conn.close()
@@ -117,6 +118,7 @@ class VisibilityOptimizer:
                         last_optimized_at = %s 
                     WHERE dest_id = %s
                 """, (new_min, new_max, get_kst_now(), dest_id))
+                cursor.execute("DELETE FROM task_position_pool WHERE dest_id = %s AND dist_m > %s", (dest_id, new_max))
                 print(f"  [STILL-FAILED] {dest_id}: Gradual shrink applied. Range narrowed from {curr_min}m~{curr_max}m to {new_min}m~{new_max}m.")
         finally:
             conn.close()
