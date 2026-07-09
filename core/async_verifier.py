@@ -34,11 +34,6 @@ def run_async_verification():
                        AND (p.check_status = 'FAIL' OR p.name = '' OR p.name LIKE 'FAILED_SCRAPE_%%' OR p.lat IS NULL OR p.lng IS NULL)
                        AND (p.last_checked_at IS NULL OR p.last_checked_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE))
                    )
-                   OR (
-                       r.id IS NOT NULL
-                       AND (dp.fail_cnt > 0 OR dp.mismatch_cnt > 0 OR dp.miss_cnt > 0)
-                       AND (p.last_checked_at IS NULL OR p.last_checked_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
-                   )
                 ORDER BY p.check_status ASC, p.created_at ASC
             """, (get_kst_date(), get_kst_date()))
             pending_items = cursor.fetchall()
@@ -136,14 +131,39 @@ def run_async_verification():
                     print(f"  [SUCCESS] {dest_id} -> {name} (VERIFIED)")
                 else:
                     err_msg = info.get('message') if info else "Unknown error"
-                    print(f"  [FAILED] {dest_id} -> Scrape failed: {err_msg}")
+                    err_code = info.get('error') if info else "unknown"
+                    status_code = info.get('status_code') if info else None
                     
-                    # fail_count 관리 배제: 상태는 PENDING 유지, fail_count는 0으로 초기화/유지하고, last_checked_at만 갱신
-                    cursor.execute("""
-                        UPDATE places 
-                        SET check_status = 'PENDING', fail_count = 0, last_checked_at = %s
-                        WHERE dest_id = %s
-                    """, (get_kst_now(), dest_id))
+                    is_permanent = (err_code == 'no_name' or status_code == 404)
+                    
+                    if is_permanent:
+                        print(f"  [DELETED_PLACE] {dest_id} -> Deleted/Closed on Naver Map (error: {err_code}, status: {status_code}). Flagging as FAIL.")
+                        cursor.execute("""
+                            UPDATE places 
+                            SET check_status = 'FAIL', fail_count = 0, name = %s, last_checked_at = %s
+                            WHERE dest_id = %s
+                        """, (f"DELETED_{dest_id}", get_kst_now(), dest_id))
+                    else:
+                        print(f"  [FAILED] {dest_id} -> Scrape failed: {err_msg}")
+                        # Increment fail_count for temporary errors. If it fails 10 times consecutively, mark as FAIL
+                        cursor.execute("SELECT fail_count FROM places WHERE dest_id = %s", (dest_id,))
+                        fc_row = cursor.fetchone()
+                        curr_fc = fc_row['fail_count'] if fc_row else 0
+                        new_fc = curr_fc + 1
+                        
+                        if new_fc >= 10:
+                            print(f"  [FAILED_LIMIT] {dest_id} -> Failed to scrape 10 times consecutively. Flagging as FAIL.")
+                            cursor.execute("""
+                                UPDATE places 
+                                SET check_status = 'FAIL', fail_count = 0, name = %s, last_checked_at = %s
+                                WHERE dest_id = %s
+                            """, (f"FAILED_SCRAPE_{dest_id}", get_kst_now(), dest_id))
+                        else:
+                            cursor.execute("""
+                                UPDATE places 
+                                SET check_status = 'PENDING', fail_count = %s, last_checked_at = %s
+                                WHERE dest_id = %s
+                            """, (new_fc, get_kst_now(), dest_id))
                     
     except Exception as e:
         print(f"[Async Verifier] Exception during run: {e}")

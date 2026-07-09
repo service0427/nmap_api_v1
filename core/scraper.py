@@ -87,7 +87,7 @@ class NaverPlaceScraper:
         try:
             res_poi = requests.get(poi_url, headers=poi_headers, timeout=10)
             if res_poi.status_code != 200:
-                return {"error": "poi_fail", "message": f"POI API 오류 ({res_poi.status_code})"}
+                return {"error": "poi_fail", "message": f"POI API 오류 ({res_poi.status_code})", "status_code": res_poi.status_code}
             json_data = res_poi.json() or {}
             data_obj = json_data.get("data") or {}
             poi_data = data_obj.get("placeDetail") or {}
