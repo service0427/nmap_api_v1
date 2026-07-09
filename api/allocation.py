@@ -49,11 +49,23 @@ async def request_task(req: TaskRequest, request: Request):
                 update_device_stats(cursor, req.device_id)
                 
                 # 1. Device Verification
-                cursor.execute("SELECT seq, device_id, status, orig_ssaid, orig_adid, orig_idfv, orig_ni, orig_token FROM devices WHERE device_id = %s AND status = 'on'", (req.device_id,))
+                cursor.execute("SELECT seq, device_id, status, orig_ssaid, orig_adid, orig_idfv, orig_ni, orig_token, last_allocated_at, penalty_until FROM devices WHERE device_id = %s AND status = 'on'", (req.device_id,))
                 device_row = cursor.fetchone()
                 if not device_row: 
                     log_allocation_failure(cursor, req.device_id, "UNAUTHORIZED_DEVICE", client_ip or "unknown", req.dict())
                     return {"status": "error", "msg": "UNAUTHORIZED_DEVICE"}
+
+                # 1a. Penalty check (1-hour block for 60+ fails)
+                penalty_until = device_row.get('penalty_until')
+                if penalty_until and penalty_until > kst_now:
+                    log_allocation_failure(cursor, req.device_id, "PENALTY_ACTIVE", client_ip or "unknown", req.dict())
+                    return {"status": "error", "msg": "PENALTY_ACTIVE"}
+
+                # 1b. Cooldown check (60-second limit between allocations)
+                last_alloc = device_row.get('last_allocated_at')
+                if last_alloc and (kst_now - last_alloc).total_seconds() < 60:
+                    log_allocation_failure(cursor, req.device_id, "COOLDOWN_ACTIVE", client_ip or "unknown", req.dict())
+                    return {"status": "error", "msg": "COOLDOWN_ACTIVE"}
 
                 # 2. Safety Exclusions (Strict 5-Minute Lock)
                 cursor.execute("SELECT dest_id FROM tasks_log WHERE end_time IS NULL AND created_at > %s - INTERVAL %s SECOND", (kst_now, WORKING_LOCK_SEC))
@@ -342,6 +354,7 @@ async def request_task(req: TaskRequest, request: Request):
                     final_speed, kst_now
                 ))
                 
+                cursor.execute("UPDATE devices SET last_allocated_at = %s WHERE device_id = %s", (kst_now, req.device_id))
                 v1_task_id = cursor.connection.insert_id()
 
 
