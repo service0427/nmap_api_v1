@@ -86,7 +86,19 @@ async def report_result(report: ResultReport, request: Request):
                     
                     status_str = str(report.status or "")
                     err_msg = str(report.message or "")
-                    is_miss = any(x in err_msg or x in status_str for x in ["NOT_FOUND", "MISS", "길찾기 결과가 없습니다", "미노출", "검색 실패", "목적지 검색 실패", "ADDRESS_NOT_FOUND"])
+                    err_upper = err_msg.upper()
+                    status_upper = status_str.upper()
+                    
+                    is_miss = False
+                    if "ADDRESS_NOT_FOUND" in err_upper or "ADDRESS_NOT_FOUND" in status_upper:
+                        is_miss = True
+                    elif "목적지 검색 실패" in err_msg or "미노출" in err_msg or "검색 결과가 없습니다" in err_msg:
+                        is_miss = True
+                    elif "NOT_FOUND" in err_upper and "SEARCH_FIELD" not in err_upper and "GUIDANCE" not in err_upper:
+                        is_miss = True
+                    elif "MISS" in err_upper and "MISMATCH" not in err_upper:
+                        is_miss = True
+
                     is_timeout = any(x in err_msg for x in ["TIMEOUT", "NETWORK", "타임아웃", "통신", "Network"])
                     is_mismatch = "IDENTITY_MISMATCH" in err_msg
 
