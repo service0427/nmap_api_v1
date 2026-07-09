@@ -162,7 +162,7 @@ def report_result(report: ResultReport, request: Request):
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.post("/api/v1/update_status")
-async def update_status(data: StatusUpdate, request: Request):
+def update_status(data: StatusUpdate, request: Request):
     helpers.request_counter += 1
     actual_task_id = data.task_id or data.log_id
     if not actual_task_id:

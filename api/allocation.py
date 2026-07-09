@@ -354,8 +354,8 @@ def request_task(req: TaskRequest, request: Request):
                     final_speed, kst_now
                 ))
                 
-                cursor.execute("UPDATE devices SET last_allocated_at = %s WHERE device_id = %s", (kst_now, req.device_id))
                 v1_task_id = cursor.connection.insert_id()
+                cursor.execute("UPDATE devices SET last_allocated_at = %s WHERE device_id = %s", (kst_now, req.device_id))
 
 
                 
