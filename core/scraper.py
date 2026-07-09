@@ -123,8 +123,8 @@ class NaverPlaceScraper:
                     addr_res = self._mobile_search(addr)
                     addr_list = addr_res.get("address", [])
                     if addr_list:
-                        lat = float(addr_list[0]['y'])
-                        lng = float(addr_list[0]['x'])
+                        lat = float(addr_list[0].get('y') or 0.0)
+                        lng = float(addr_list[0].get('x') or 0.0)
 
             if lat is None or lng is None:
                 lat = 0.0

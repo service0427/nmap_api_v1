@@ -30,6 +30,9 @@ class VisibilityOptimizer:
                 query = """
                     SELECT * FROM places 
                     WHERE is_optimizer = 1 
+                      AND lat IS NOT NULL 
+                      AND lng IS NOT NULL
+                      AND name NOT LIKE 'FAILED_SCRAPE_%%'
                     ORDER BY optimization_priority DESC, last_optimized_at ASC
                     LIMIT 20
                 """
@@ -280,7 +283,10 @@ class VisibilityOptimizer:
 
         print(f"Found {len(targets)} targets to optimize.")
         for t in targets:
-            self.probe_place(t)
+            try:
+                self.probe_place(t)
+            except Exception as e:
+                print(f"  [ERROR] Failed to optimize target {t.get('dest_id')}: {e}")
             time.sleep(1) # IP 차단 방지 간격
 
 if __name__ == "__main__":
