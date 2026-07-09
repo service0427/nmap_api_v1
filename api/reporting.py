@@ -48,7 +48,7 @@ async def report_result(report: ResultReport, request: Request):
     if not actual_task_id:
         return {"status": "REPORTED"}
         
-    kst_now, kst_date = get_kst_now(), get_kst_date()
+    kst_now, kst_date = get_kst_now().replace(tzinfo=None), get_kst_date()
     try:
         with get_db_cursor() as cursor:
             cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id, result_msg FROM tasks_log WHERE id = %s", (actual_task_id,))

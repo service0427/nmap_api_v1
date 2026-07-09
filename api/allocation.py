@@ -38,7 +38,7 @@ async def request_task(req: TaskRequest, request: Request):
     helpers.request_counter += 1
     helpers.active_devices.add(req.device_id)
     
-    kst_now, kst_date = get_kst_now(), get_kst_date()
+    kst_now, kst_date = get_kst_now().replace(tzinfo=None), get_kst_date()
     success_limit = Config.get_dest_success_limit()
     client_ip = req.ip if req.ip and req.ip != "0.0.0.0" and req.ip != "unknown" else None
     WORKING_LOCK_SEC = 900 # 15 Minutes to wait for client progress report
