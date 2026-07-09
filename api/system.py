@@ -25,7 +25,7 @@ class LteUsageReport(BaseModel):
     ip: Optional[str] = None
 
 @router.get("/api/v1/health")
-async def health_check():
+def health_check():
     try:
         with get_db_cursor() as cursor: 
             cursor.execute("SELECT 1")
@@ -60,12 +60,12 @@ async def health_check():
         return {"status": "unhealthy", "error": str(e)}
 
 @router.get("/", response_class=HTMLResponse)
-async def dashboard():
+def dashboard():
     kst_now = get_kst_now()
     return f"<h1>Nmap Production API v1.1 Active</h1><p>KST: {kst_now.strftime('%Y-%m-%d %H:%M:%S')}</p><p><a href='/admin/'>Go to Admin Dashboard</a></p><p><a href='/api/v1/health'>Check Health Metrics</a></p>"
 
 @router.post("/api/v1/lte_usage")
-async def report_lte_usage(report: LteUsageReport, request: Request):
+def report_lte_usage(report: LteUsageReport, request: Request):
     helpers.request_counter += 1
     kst_date = get_kst_date()
     kst_now = get_kst_now()

@@ -42,7 +42,7 @@ class StatusUpdate(BaseModel):
     log_path: Optional[str] = None
 
 @router.post("/api/v1/report_result")
-async def report_result(report: ResultReport, request: Request):
+def report_result(report: ResultReport, request: Request):
     helpers.request_counter += 1
     actual_task_id = report.task_id or report.log_id
     if not actual_task_id:

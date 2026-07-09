@@ -33,7 +33,7 @@ class TaskRequest(BaseModel):
     only_optimizer: Optional[bool] = False
 
 @router.post("/api/v1/request_task")
-async def request_task(req: TaskRequest, request: Request):
+def request_task(req: TaskRequest, request: Request):
     # Increment metrics on shared helpers module
     helpers.request_counter += 1
     helpers.active_devices.add(req.device_id)
