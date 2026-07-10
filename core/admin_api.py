@@ -54,17 +54,20 @@ def register_admin_endpoints(app, get_db_cursor, active_devices):
                 # 4. Destinations
                 cursor.execute("""
                     SELECT p.dest_id, p.name, p.address, p.is_optimizer, p.dist_min_m, p.dist_max_m,
+                           p.max_total_limit, p.max_active_slots,
                            IFNULL(dp.success_cnt, 0) as success, IFNULL(dp.fail_cnt, 0) as fail,
                            (
                                SELECT IFNULL(SUM(work_count), 0) FROM raw_slots WHERE dest_id = p.dest_id AND status='on' AND is_deleted = 0 AND %s BETWEEN start_date AND end_date
-                           ) as target
+                           ) as target,
+                           IF(la.dest_id IS NOT NULL, 1, 0) as is_adjusted
                     FROM places p
                     LEFT JOIN daily_progress dp ON p.dest_id = dp.dest_id AND dp.work_date = %s
+                    LEFT JOIN daily_limit_adjustments la ON p.dest_id = la.dest_id AND la.work_date = %s
                     WHERE p.id IN (
                         SELECT DISTINCT p2.id FROM places p2 JOIN raw_slots rs ON p2.dest_id = rs.dest_id WHERE rs.status='on' AND rs.is_deleted = 0
                     )
                     ORDER BY success DESC
-                """, (kst_date, kst_date))
+                """, (kst_date, kst_date, kst_date))
                 dest_list = cursor.fetchall()
 
                 # 5. Recent Logs
@@ -115,6 +118,8 @@ def register_admin_endpoints(app, get_db_cursor, active_devices):
         status = data.get("status")
         limit = data.get("limit")
         is_optimizer = data.get("is_optimizer")
+        max_total_limit = data.get("max_total_limit")
+        max_active_slots = data.get("max_active_slots")
         try:
             with get_db_cursor() as cursor:
                 if status: cursor.execute("UPDATE raw_slots SET status = %s WHERE dest_id = %s", (status, dest_id))
@@ -122,5 +127,38 @@ def register_admin_endpoints(app, get_db_cursor, active_devices):
                     cursor.execute("UPDATE raw_slots SET work_count = %s WHERE dest_id = %s AND status='on'", (limit, dest_id))
                 if is_optimizer is not None:
                     cursor.execute("UPDATE places SET is_optimizer = %s WHERE dest_id = %s", (is_optimizer, dest_id))
+                if max_total_limit is not None:
+                    cursor.execute("UPDATE places SET max_total_limit = %s WHERE dest_id = %s", (max_total_limit, dest_id))
+                if max_active_slots is not None:
+                    cursor.execute("UPDATE places SET max_active_slots = %s WHERE dest_id = %s", (max_active_slots, dest_id))
             return {"status": "ok"}
+        except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/v1/admin/device/reset_penalty")
+    async def reset_device_penalty_get(device_id: str):
+        if not device_id:
+            raise HTTPException(status_code=400, detail="Missing device_id parameter")
+        try:
+            with get_db_cursor() as cursor:
+                # 1. Reset penalty block time
+                cursor.execute("UPDATE devices SET penalty_until = NULL WHERE device_id = %s", (device_id,))
+                # 2. Reset today's failure stats so it doesn't get blocked again immediately on next failure
+                cursor.execute("UPDATE device_daily_stats SET fail_cnt = 0 WHERE device_id = %s AND work_date = %s", (device_id, get_kst_date()))
+                print(f"[Admin API] Manually reset penalty and failures for device (GET): {device_id}")
+            return {"status": "ok", "message": f"Penalty and failure count reset successfully for device {device_id}"}
+        except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/v1/admin/device/reset_penalty")
+    async def reset_device_penalty_post(data: dict):
+        device_id = data.get("device_id")
+        if not device_id:
+            raise HTTPException(status_code=400, detail="Missing device_id in request body")
+        try:
+            with get_db_cursor() as cursor:
+                # 1. Reset penalty block time
+                cursor.execute("UPDATE devices SET penalty_until = NULL WHERE device_id = %s", (device_id,))
+                # 2. Reset today's failure stats so it doesn't get blocked again immediately on next failure
+                cursor.execute("UPDATE device_daily_stats SET fail_cnt = 0 WHERE device_id = %s AND work_date = %s", (device_id, get_kst_date()))
+                print(f"[Admin API] Manually reset penalty and failures for device (POST): {device_id}")
+            return {"status": "ok", "message": f"Penalty and failure count reset successfully for device {device_id}"}
         except Exception as e: raise HTTPException(status_code=500, detail=str(e))

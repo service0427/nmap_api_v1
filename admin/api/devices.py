@@ -76,3 +76,38 @@ async def update_device_group_info(schema: DeviceGroupUpdateSchema):
     except Exception as e:
         print(f"Admin API Group Update Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/v1/admin/device/reset_penalty")
+async def reset_device_penalty_get(device_id: str):
+    if not device_id:
+        raise HTTPException(status_code=400, detail="Missing device_id parameter")
+    try:
+        with get_db_cursor() as cursor:
+            # 1. Reset penalty block time
+            cursor.execute("UPDATE devices SET penalty_until = NULL WHERE device_id = %s", (device_id,))
+            # 2. Reset today's failure stats so it doesn't get blocked again immediately on next failure
+            kst_date = get_kst_now().date()
+            cursor.execute("UPDATE device_daily_stats SET fail_cnt = 0 WHERE device_id = %s AND work_date = %s", (device_id, kst_date))
+            print(f"[Admin API] Manually reset penalty and failures for device (GET): {device_id}")
+        return {"status": "ok", "message": f"Penalty and failure count reset successfully for device {device_id}"}
+    except Exception as e:
+        print(f"Admin API Reset Penalty Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/v1/admin/device/reset_penalty")
+async def reset_device_penalty_post(data: dict):
+    device_id = data.get("device_id")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="Missing device_id in request body")
+    try:
+        with get_db_cursor() as cursor:
+            # 1. Reset penalty block time
+            cursor.execute("UPDATE devices SET penalty_until = NULL WHERE device_id = %s", (device_id,))
+            # 2. Reset today's failure stats so it doesn't get blocked again immediately on next failure
+            kst_date = get_kst_now().date()
+            cursor.execute("UPDATE device_daily_stats SET fail_cnt = 0 WHERE device_id = %s AND work_date = %s", (device_id, kst_date))
+            print(f"[Admin API] Manually reset penalty and failures for device (POST): {device_id}")
+        return {"status": "ok", "message": f"Penalty and failure count reset successfully for device {device_id}"}
+    except Exception as e:
+        print(f"Admin API Reset Penalty Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
