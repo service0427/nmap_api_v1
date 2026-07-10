@@ -134,6 +134,30 @@ def format_address(addr: Optional[str]) -> Optional[str]:
 
     # 2. Split by comma first and take the preceding section
     addr = addr.split(',')[0].strip()
+    
+    # 3. Discard details (anything after building number or jibun number)
+    words = addr.split(' ')
+    road_idx = -1
+    jibun_idx = -1
+    
+    for idx, w in enumerate(words):
+        if (w.endswith('로') or w.endswith('길')) and not (w.endswith('구') or w.endswith('시') or w.endswith('군')):
+            road_idx = idx
+            break
+        if (w.endswith('동') or w.endswith('읍') or w.endswith('면') or w.endswith('리')) and not (w.endswith('구') or w.endswith('시') or w.endswith('군')):
+            if jibun_idx == -1:
+                jibun_idx = idx
+            
+    target_idx = -1
+    if road_idx != -1:
+        target_idx = road_idx + 1
+    elif jibun_idx != -1:
+        target_idx = jibun_idx + 1
+        
+    if target_idx != -1 and target_idx < len(words):
+        addr = ' '.join(words[:target_idx + 1]).strip()
+
+    # Original compatibility: strip first word
     parts = addr.split(' ')
     if len(parts) > 1:
         return ' '.join(parts[1:]).strip()
