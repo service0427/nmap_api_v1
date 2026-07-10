@@ -90,19 +90,32 @@ def process_sync(site_id, standardized_data, dry_run=False):
                 sid = item['sid']
                 new_sid_list.add(sid)
                 
-                # 로컬 daily_progress의 fail_cnt 또는 alloc_fail_cnt를 합산하여 실패 여부 확인
+                # 로컬 daily_progress의 success_cnt, fail_cnt, alloc_fail_cnt를 가져와 성공률 기반 판정
                 cursor.execute("""
-                    SELECT IFNULL(fail_cnt, 0) + IFNULL(alloc_fail_cnt, 0) as total_fail 
+                    SELECT IFNULL(success_cnt, 0) as success_cnt,
+                           IFNULL(fail_cnt, 0) as fail_cnt,
+                           IFNULL(alloc_fail_cnt, 0) as alloc_fail_cnt
                     FROM daily_progress 
                     WHERE work_date = %s AND site_id = %s AND dest_id = %s
                 """, (get_kst_date(), site_id, item['dest_id']))
                 dp_row = cursor.fetchone()
-                local_fail_cnt = dp_row['total_fail'] if dp_row else 0
+                
+                success_cnt = dp_row['success_cnt'] if dp_row else 0
+                fail_cnt = dp_row['fail_cnt'] if dp_row else 0
+                alloc_fail_cnt = dp_row['alloc_fail_cnt'] if dp_row else 0
+                total_fail = fail_cnt + alloc_fail_cnt
+                total_runs = success_cnt + total_fail
 
-                is_high_failure = True if local_fail_cnt >= 2 else False
+                # 실패가 2회 이상 발생했고, 전체 시도 중 성공률이 60% 이하인 경우 고장 의심 대상으로 판정
+                is_high_failure = False
+                if total_runs > 0:
+                    success_rate = success_cnt / total_runs
+                    if success_rate <= 0.6 and total_fail >= 2:
+                        is_high_failure = True
+
                 ensure_place_info(cursor, item['dest_id'], force_update=is_high_failure)
                 
-                if local_fail_cnt >= 2:
+                if is_high_failure:
                     cursor.execute("SELECT dist_max_m FROM places WHERE dest_id = %s", (item['dest_id'],))
                     p_dist_row = cursor.fetchone()
                     
