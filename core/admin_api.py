@@ -42,7 +42,7 @@ def register_admin_endpoints(app, get_db_cursor, active_devices):
                 # 3. Devices
                 cursor.execute("""
                     SELECT d.device_id, d.current_ip, d.memo, d.status,
-                           DATE_FORMAT(d.penalty_until, '%Y-%m-%d %H:%i:%s') as penalty_until,
+                           DATE_FORMAT(d.penalty_until, '%%Y-%%m-%%d %%H:%%i:%%s') as penalty_until,
                            (SELECT dest_name FROM tasks_log WHERE device_id = d.device_id ORDER BY id DESC LIMIT 1) as current_dest,
                            (SELECT status FROM tasks_log WHERE device_id = d.device_id ORDER BY id DESC LIMIT 1) as current_status,
                            IFNULL(ds.success_cnt, 0) as today_success, IFNULL(ds.fail_cnt, 0) as today_fail

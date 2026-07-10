@@ -16,29 +16,45 @@ from core.utils import get_kst_now, get_kst_date
 router = APIRouter()
 
 def get_stats_for_date(cursor, target_date, has_is_deleted):
-    is_deleted_filter1 = f"AND (rs.is_deleted = 0 OR (rs.is_deleted = 1 AND DATE(rs.deleted_at) >= '{target_date.isoformat()}'))" if has_is_deleted else ""
-    cursor.execute(f"""
+    # 1. daily_progress 테이블 단독 집계로 속도 및 만료 유실 해결 (LUF, WJD 누락 방지)
+    cursor.execute("""
         SELECT 
             site_id,
-            SUM(target) as target,
-            SUM(success) as success,
-            SUM(fail) as fail
-        FROM (
-            SELECT 
-                rs.site_id,
-                rs.work_count as target,
-                IFNULL(dp.success_cnt, 0) as success,
-                IFNULL(dp.fail_cnt, 0) as fail
-            FROM raw_slots rs
-            LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.sid = dp.sid AND dp.work_date = %s
-            WHERE (rs.status = 'on' OR (rs.is_deleted = 1 AND DATE(rs.deleted_at) >= '{target_date.isoformat()}'))
-              {is_deleted_filter1}
-              AND %s BETWEEN rs.start_date AND rs.end_date
-        ) t
+            SUM(IFNULL(total_target, 0)) as target,
+            SUM(success_cnt) as success,
+            SUM(fail_cnt) as fail
+        FROM daily_progress
+        WHERE work_date = %s
         GROUP BY site_id
-    """, (target_date, target_date))
+    """, (target_date,))
     rows = cursor.fetchall()
     
+    total_target_sum = sum(row['target'] for row in rows) if rows else 0
+    if total_target_sum == 0:
+        # Fallback: daily_progress가 아예 생성 전이거나 total_target이 없는 과거 레코드용 기존 쿼리
+        is_deleted_filter1 = f"AND (rs.is_deleted = 0 OR (rs.is_deleted = 1 AND DATE(rs.deleted_at) >= '{target_date.isoformat()}'))" if has_is_deleted else ""
+        cursor.execute(f"""
+            SELECT 
+                site_id,
+                SUM(target) as target,
+                SUM(success) as success,
+                SUM(fail) as fail
+            FROM (
+                SELECT 
+                    rs.site_id,
+                    rs.work_count as target,
+                    IFNULL(dp.success_cnt, 0) as success,
+                    IFNULL(dp.fail_cnt, 0) as fail
+                FROM raw_slots rs
+                LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.sid = dp.sid AND dp.work_date = %s
+                WHERE (rs.status = 'on' OR (rs.is_deleted = 1 AND DATE(rs.deleted_at) >= '{target_date.isoformat()}'))
+                  {is_deleted_filter1}
+                  AND %s BETWEEN rs.start_date AND rs.end_date
+            ) t
+            GROUP BY site_id
+        """, (target_date, target_date))
+        rows = cursor.fetchall()
+        
     stats_by_site = {str(row['site_id']).upper(): row for row in rows}
     
     fsd = stats_by_site.get('FSD', {'target': 0, 'success': 0, 'fail': 0})
@@ -159,6 +175,7 @@ async def get_admin_summary(date: str = None):
             cursor.execute("""
                 SELECT d.device_id, d.current_ip, d.hostname, d.hostname as memo, d.status, d.is_alert_muted,
                        d.install_place, d.install_count, d.network_type,
+                       DATE_FORMAT(d.penalty_until, '%%Y-%%m-%%d %%H:%%i:%%s') as penalty_until,
                        tl.dest_name as current_dest,
                        tl.status as current_status,
                        tl.result_msg as last_result_msg,
@@ -223,38 +240,68 @@ async def get_admin_summary(date: str = None):
 
             # 4. Destinations (Detailed - all slots for today including status)
             yesterday_date = query_date - timedelta(days=1)
-            is_deleted_where_expr = "AND rs.is_deleted = 0" if has_is_deleted else ""
+            is_deleted_where_expr = "AND is_deleted = 0" if has_is_deleted else ""
             cursor.execute(f"""
                 SELECT 
-                    rs.site_id,
-                    rs.dest_id,
+                    t.site_id,
+                    t.dest_id,
                     p.name,
                     p.is_optimizer,
                     p.check_status,
                     p.dist_min_m,
                     p.dist_max_m,
-                    MIN(rs.start_date) as start_date,
-                    MAX(rs.end_date) as end_date,
-                    SUM(rs.work_count) as target,
-                    MAX(rs.status) as slot_status,
-                    SUM(IFNULL(dp.success_cnt, 0)) as success,
-                    SUM(IFNULL(dp.fail_cnt, 0)) as fail,
-                    SUM(IFNULL(dp.miss_cnt, 0)) as miss,
-                    SUM(IFNULL(dp.timeout_cnt, 0)) as timeout,
-                    SUM(IFNULL(dp.mismatch_cnt, 0)) as mismatch,
-                    SUM(IFNULL(dp_y.success_cnt, 0)) as y_success,
-                    SUM(IFNULL(dp_y.fail_cnt, 0)) as y_fail
-                FROM raw_slots rs
-                JOIN places p ON rs.dest_id = p.dest_id
-                LEFT JOIN daily_progress dp ON rs.site_id = dp.site_id AND rs.sid = dp.sid AND dp.work_date = %s
-                LEFT JOIN daily_progress dp_y ON rs.site_id = dp_y.site_id AND rs.sid = dp_y.sid AND dp_y.work_date = %s
-                WHERE %s BETWEEN rs.start_date AND rs.end_date 
-                  AND rs.site_id <> 'test' 
-                  {is_deleted_where_expr}
-                  AND rs.status = 'on'
-                GROUP BY rs.site_id, rs.dest_id, p.name, p.is_optimizer, p.check_status, p.dist_min_m, p.dist_max_m
-                ORDER BY rs.site_id ASC, rs.dest_id ASC
-            """, (query_date, yesterday_date, query_date))
+                    p.max_total_limit,
+                    p.max_active_slots,
+                    t.start_date,
+                    t.end_date,
+                    t.target,
+                    t.slot_status,
+                    IFNULL(dp.success, 0) as success,
+                    IFNULL(dp.fail, 0) as fail,
+                    IFNULL(dp.miss, 0) as miss,
+                    IFNULL(dp.timeout, 0) as timeout,
+                    IFNULL(dp.mismatch, 0) as mismatch,
+                    IFNULL(dp_y.success, 0) as y_success,
+                    IFNULL(dp_y.fail, 0) as y_fail,
+                    IF(la.dest_id IS NOT NULL, 1, 0) as is_adjusted
+                FROM (
+                    SELECT 
+                        site_id,
+                        dest_id,
+                        MIN(start_date) as start_date,
+                        MAX(end_date) as end_date,
+                        SUM(work_count) as target,
+                        MAX(status) as slot_status
+                    FROM raw_slots
+                    WHERE %s BETWEEN start_date AND end_date 
+                      AND site_id <> 'test'
+                      AND status = 'on'
+                      {is_deleted_where_expr}
+                    GROUP BY site_id, dest_id
+                ) t
+                JOIN places p ON t.dest_id = p.dest_id
+                LEFT JOIN (
+                    SELECT site_id, dest_id, 
+                           SUM(success_cnt) as success, 
+                           SUM(fail_cnt) as fail,
+                           SUM(miss_cnt) as miss,
+                           SUM(timeout_cnt) as timeout,
+                           SUM(mismatch_cnt) as mismatch
+                    FROM daily_progress
+                    WHERE work_date = %s
+                    GROUP BY site_id, dest_id
+                ) dp ON t.site_id = dp.site_id AND t.dest_id = dp.dest_id
+                LEFT JOIN (
+                    SELECT site_id, dest_id, 
+                           SUM(success_cnt) as success, 
+                           SUM(fail_cnt) as fail
+                    FROM daily_progress
+                    WHERE work_date = %s
+                    GROUP BY site_id, dest_id
+                ) dp_y ON t.site_id = dp_y.site_id AND t.dest_id = dp_y.dest_id
+                LEFT JOIN daily_limit_adjustments la ON t.dest_id = la.dest_id AND la.work_date = %s
+                ORDER BY t.site_id ASC, t.dest_id ASC
+            """, (query_date, query_date, yesterday_date, query_date))
             dest_list = cursor.fetchall()
 
             # 5. Live Alarms (Smart Anomaly Detection)
