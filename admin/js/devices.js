@@ -309,9 +309,17 @@ function renderAccordionView(filteredDevices) {
       const diffColor = diff > 0 ? 'var(--color-success)' : (diff < 0 ? 'var(--color-danger)' : 'var(--text-muted)');
       const compareText = `<span style="font-size:0.65rem; color:${diffColor}; font-weight:800; margin-left:0.15rem;">(${diffSign}${diff})</span>`;
 
+      const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+      const isPenalized = d.penalty_until && new Date(d.penalty_until.replace(' ', 'T')) > kstNow;
+
       if (d.has_identity_mismatch) {
         borderColor = 'var(--color-danger)';
         cardDiv.style.background = 'rgba(239, 68, 68, 0.08)';
+      }
+
+      if (isPenalized) {
+        borderColor = 'var(--color-danger)';
+        cardDiv.style.background = 'rgba(239, 68, 68, 0.05)';
       }
 
       cardDiv.className = `device-card ${statusClass}`;
@@ -320,6 +328,19 @@ function renderAccordionView(filteredDevices) {
       cardDiv.style.borderColor = borderColor;
       cardDiv.style.cursor = "pointer";
       cardDiv.setAttribute("onclick", `window.openDeviceDetailModal('${d.device_id}')`);
+      
+      let penaltyHtml = '';
+      if (isPenalized) {
+        const timePart = d.penalty_until.substring(11, 16);
+        penaltyHtml = `
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:0.25rem; padding-top:0.25rem; border-top:1px dashed rgba(239, 68, 68, 0.2);" onclick="event.stopPropagation();">
+            <span style="font-size:0.6rem; color:var(--color-danger); font-weight:800;">⚠️ 차단 (~${timePart})</span>
+            <button class="badge success" style="cursor:pointer; padding:0.05rem 0.25rem; font-size:0.55rem; line-height:1; border:none; font-weight:700;" onclick="window.resetPenalty('${d.device_id}')">
+              해제
+            </button>
+          </div>
+        `;
+      }
       
       cardDiv.innerHTML = `
         <div class="device-card-header" style="margin-bottom:0.15rem;">
@@ -343,6 +364,7 @@ function renderAccordionView(filteredDevices) {
           </div>
           <span style="font-size:0.65rem; color:var(--text-muted); font-weight:500;">통신 ${lastActiveFormatted}</span>
         </div>
+        ${penaltyHtml}
       `;
       gridDiv.appendChild(cardDiv);
     });
@@ -375,6 +397,8 @@ function renderCompactView(filteredDevices) {
 
   filteredDevices.forEach(d => {
     const isAlerting = d.status === 'ERROR' || (d.today_fail || 0) >= 5;
+    const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+    const isPenalized = d.penalty_until && new Date(d.penalty_until.replace(' ', 'T')) > kstNow;
     
     // Status colors: Active Green, Inactive Gray, Warning Yellow, Alert Red
     let bgColor = 'rgba(255, 255, 255, 0.02)';
@@ -401,6 +425,12 @@ function renderCompactView(filteredDevices) {
       statusDotColor = 'var(--color-danger)';
     }
 
+    if (isPenalized) {
+      bgColor = 'rgba(239, 68, 68, 0.15)';
+      borderColor = 'var(--color-danger)';
+      statusDotColor = 'var(--color-danger)';
+    }
+
     const shortName = d.hostname ? d.hostname.replace('PC-', '') : d.device_id.substring(0, 5);
     const lastTime = d.last_task_at ? d.last_task_at.substring(11, 16) : '--:--';
     
@@ -413,7 +443,8 @@ function renderCompactView(filteredDevices) {
     }
 
     const tooltip = `기기: ${d.hostname || '미정'} (${d.device_id})&#10;IP: ${d.current_ip || '--'}&#10;상태: ${d.status || 'OFF'}&#10;오늘성공: ${d.today_success || 0}건 (${diffText})&#10;오늘실패: ${d.today_fail || 0}건&#10;최근통신: ${lastTime}&#10;설치처: ${d.install_place || '미정'}` + 
-      (d.has_identity_mismatch ? '\u000A⚠️ 신원오류 감지: SSAID/ADID/TOKEN 불일치' : '');
+      (d.has_identity_mismatch ? '\u000A⚠️ 신원오류 감지: SSAID/ADID/TOKEN 불일치' : '') +
+      (isPenalized ? `\u000A⚠️ 페널티 차단 상태 (만료: ${d.penalty_until})` : '');
 
     html += `
       <div class="compact-badge" 
@@ -505,6 +536,30 @@ function renderTableView(filteredDevices) {
             statusText = 'ERROR';
           }
           return `<span class="badge ${badgeClass}" style="font-size:0.65rem; padding:0.1rem 0.3rem;">${statusText}</span>`;
+        }
+      },
+      { 
+        headerName: '패널티', 
+        width: 145, 
+        cellRenderer: params => {
+          const d = params.data;
+          const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+          const isPenalized = d.penalty_until && new Date(d.penalty_until.replace(' ', 'T')) > kstNow;
+          
+          if (isPenalized) {
+            const timePart = d.penalty_until.substring(11, 16);
+            return `
+              <div style="display:flex; align-items:center; gap:0.25rem; height:100%; padding-top:2px;">
+                <span class="badge danger" style="font-size:0.6rem; padding:0.1rem 0.3rem; font-weight:700;" title="차단 만료: ${d.penalty_until}">
+                  차단 (~${timePart})
+                </span>
+                <button class="btn primary sm" style="padding:0.1rem 0.3rem; height:24px; font-size:0.6rem; background:var(--color-success); border-color:var(--color-success);" onclick="window.resetPenalty('${d.device_id}')">
+                  해제
+                </button>
+              </div>
+            `;
+          }
+          return `<span style="color:var(--text-muted); font-size:0.75rem;">-</span>`;
         }
       },
       { field: 'today_success', headerName: '오늘 성공', sortable: true, width: 95, cellRenderer: params => {

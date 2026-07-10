@@ -376,6 +376,22 @@ export function switchDate(dateKey) {
   }
 }
 
+// Action: Reset Device Penalty
+export async function resetPenalty(deviceId) {
+  if (!confirm(`[${deviceId}] 기기의 페널티와 실패 스택을 초기화하시겠습니까?`)) return;
+  try {
+    const res = await fetch("/api/v1/admin/device/reset_penalty", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ device_id: deviceId })
+    });
+    if (!res.ok) throw new Error("Reset Penalty fail");
+    fetchData();
+  } catch (err) {
+    alert("페널티 초기화 실패: " + err.message);
+  }
+}
+
 // Bind to window for HTML click handlers
 window.fetchData = fetchData;
 window.toggleMute = toggleMute;
@@ -383,3 +399,4 @@ window.updateDestLimit = updateDestLimit;
 window.updateDestStatus = updateDestStatus;
 window.updateDestOptimizer = updateDestOptimizer;
 window.switchDate = switchDate;
+window.resetPenalty = resetPenalty;

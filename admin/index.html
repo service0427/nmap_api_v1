@@ -458,6 +458,19 @@
           <input type="hidden" id="detail-count" value="1">
           <input type="hidden" id="detail-network" value="wired">
 
+          <!-- Penalty Warning Banner -->
+          <div id="detail-penalty-banner" style="display:none; background:rgba(239, 68, 68, 0.15); border:1px solid var(--color-danger); border-radius:var(--radius-sm); padding:0.5rem; font-size:0.65rem; color:#ff8888; font-weight:600; line-height:1.4; margin-top:0.15rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+              <div>
+                <span style="color:var(--color-danger); font-weight:800;">⚠️ 페널티 제한 적용 중</span><br/>
+                <span id="detail-penalty-time" style="font-size:0.55rem; color:var(--text-muted);">만료: --:--</span>
+              </div>
+              <button class="btn sm" onclick="window.resetDetailPenalty()" style="background:var(--color-success); border-color:var(--color-success); color:#fff; padding:0.1rem 0.35rem; font-size:0.6rem; height:24px; font-weight:700;">
+                차단 해제
+              </button>
+            </div>
+          </div>
+
           <!-- Identity Mismatch Warning Banner -->
           <div id="detail-mismatch-banner" style="display:none; background:rgba(239, 68, 68, 0.15); border:1px solid var(--color-danger); border-radius:var(--radius-sm); padding:0.4rem; font-size:0.65rem; color:#ff8888; font-weight:600; line-height:1.3; margin-top:0.15rem;">
             ⚠️ 신원 정보 불일치(IDENTITY_MISMATCH) 오류가 감지되었습니다. 기기의 실제 ADID/TOKEN 정보와 DB 설정이 일치하지 않을 수 있으니 확인 및 수정하십시오.
@@ -535,6 +548,58 @@
           </div>
         </div>
         
+      </div>
+    </div>
+  </div>
+
+  <!-- Integrated Destination Detail & Control Modal -->
+  <div class="modal-backdrop" id="dest-detail-modal" onclick="document.getElementById('dest-detail-modal').style.display='none'">
+    <div class="modal-container" onclick="event.stopPropagation()" style="max-width: 450px; width: 90%;">
+      <div class="modal-header">
+        <h3 class="panel-title" style="font-size:0.95rem; display:flex; align-items:center; gap:0.5rem;">
+          <i data-lucide="map-pin" style="width:18px; height:18px; color:var(--color-primary);"></i>
+          <span>목적지 제한 및 최적화 설정</span>
+        </h3>
+        <button class="btn secondary sm" onclick="document.getElementById('dest-detail-modal').style.display='none'">닫기</button>
+      </div>
+      <div class="modal-body" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+        <input type="hidden" id="detail-dest-id">
+        
+        <!-- Destination Info -->
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.5rem; display:flex; flex-direction:column; gap:0.25rem;">
+          <div style="font-size:0.6rem; color:var(--text-muted); font-weight:600; text-transform:uppercase;">목적지 정보</div>
+          <div style="font-size:0.85rem; font-weight:700; color:var(--text-primary);" id="detail-dest-name">--</div>
+          <div style="font-size:0.7rem; font-family:monospace; color:var(--text-muted); word-break:break-all;" id="detail-dest-id-text">--</div>
+        </div>
+
+        <!-- max_total_limit (일일 제한) -->
+        <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+          <label for="detail-dest-total-limit" style="font-size:0.75rem; font-weight:600; color:var(--text-muted); display:flex; justify-content:space-between;">
+            <span>일일 총 작업 제한 (개)</span>
+            <span style="font-size:0.65rem; color:var(--color-primary);">기본값: 20</span>
+          </label>
+          <input type="number" id="detail-dest-total-limit" class="form-input" placeholder="예: 20" min="0" style="background:#000; color:#fff; border:1px solid var(--border-color); border-radius:4px; padding:0.35rem 0.5rem; font-size:0.75rem; width:100%;">
+        </div>
+
+        <!-- max_active_slots (슬롯 분산) -->
+        <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+          <label for="detail-dest-active-slots" style="font-size:0.75rem; font-weight:600; color:var(--text-muted); display:flex; justify-content:space-between;">
+            <span>최대 활성 슬롯 제한 (개)</span>
+            <span style="font-size:0.65rem; color:var(--color-primary);">기본값: 4</span>
+          </label>
+          <input type="number" id="detail-dest-active-slots" class="form-input" placeholder="예: 4" min="0" style="background:#000; color:#fff; border:1px solid var(--border-color); border-radius:4px; padding:0.35rem 0.5rem; font-size:0.75rem; width:100%;">
+        </div>
+
+        <!-- is_optimizer (옵티마이저 토글) -->
+        <div class="form-group" style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:0.5rem; border-radius:6px; border:1px solid var(--border-color);">
+          <label style="font-size:0.75rem; font-weight:600; color:var(--text-muted); cursor:pointer;" for="detail-dest-optimizer-check">옵티마이저 가시거리 최적화 사용</label>
+          <input type="checkbox" id="detail-dest-optimizer-check" style="width:16px; height:16px; accent-color:var(--color-primary); cursor:pointer;">
+        </div>
+
+        <!-- Save Button -->
+        <button class="btn primary sm" onclick="window.saveDestinationDetailInfo()" style="margin-top: 0.5rem; padding: 0.5rem; font-size: 0.75rem; font-weight: 700; width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.25rem; border: none; cursor: pointer;">
+          <i data-lucide="save" style="width:14px; height:14px;"></i> 설정 저장
+        </button>
       </div>
     </div>
   </div>

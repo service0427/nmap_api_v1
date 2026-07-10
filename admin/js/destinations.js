@@ -138,8 +138,9 @@ export function filterDestinationsLocally(resetPage = false) {
               </span>
             </div>
             
-            <h4 style="font-size:1.0rem; font-weight:800; margin:0 0 0.4rem 0; color: ${(d.name || '').startsWith('FAILED_SCRAPE_') || d.check_status === 'FAIL' ? 'var(--danger-color)' : 'var(--text-primary)'}; line-height:1.3;">
+            <h4 style="font-size:1.0rem; font-weight:800; margin:0 0 0.4rem 0; color: ${(d.name || '').startsWith('FAILED_SCRAPE_') || d.check_status === 'FAIL' ? 'var(--danger-color)' : 'var(--text-primary)'}; line-height:1.3; cursor:pointer; text-decoration:underline;" onclick="window.openDestinationDetailModal('${d.dest_id}')">
               ${(d.name || '').startsWith('FAILED_SCRAPE_') || d.check_status === 'FAIL' ? '<span class="badge danger" style="padding:0.15rem 0.35rem; font-size:0.65rem; margin-right:0.3rem;">[지도 삭제/폐업]</span>' : ''}
+              ${d.is_adjusted ? '<span class="badge warning" style="padding:0.15rem 0.35rem; font-size:0.65rem; margin-right:0.3rem;">[한도]</span>' : ''}
               ${d.name || '이름 없음'}
             </h4>
             

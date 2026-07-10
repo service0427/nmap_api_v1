@@ -35,6 +35,20 @@ export async function openDeviceDetailModal(deviceId) {
     mismatchBanner.style.display = d.has_identity_mismatch ? "block" : "none";
   }
 
+  // Show/Hide Penalty Warning Banner
+  const penaltyBanner = document.getElementById("detail-penalty-banner");
+  const penaltyTimeEl = document.getElementById("detail-penalty-time");
+  if (penaltyBanner) {
+    const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+    const isPenalized = d.penalty_until && new Date(d.penalty_until.replace(' ', 'T')) > kstNow;
+    if (isPenalized) {
+      penaltyBanner.style.display = "block";
+      if (penaltyTimeEl) penaltyTimeEl.innerText = `만료 예정: ${d.penalty_until}`;
+    } else {
+      penaltyBanner.style.display = "none";
+    }
+  }
+
   // Make sure Single elements are visible
   const devCodeCont = document.getElementById("detail-code-container");
   if (devCodeCont) devCodeCont.style.display = 'flex';
@@ -330,6 +344,18 @@ export async function saveDestinationDetailInfo() {
   }
 }
 
+// Action: Reset device penalty from detail modal
+export async function resetDetailPenalty() {
+  const deviceId = document.getElementById("detail-device-id").value;
+  if (!deviceId) return;
+  if (deviceId.startsWith("GROUP:")) return; // Group edit ignore
+  
+  if (window.resetPenalty) {
+    await window.resetPenalty(deviceId);
+    document.getElementById('device-detail-modal').style.display = 'none';
+  }
+}
+
 // Bind to window for HTML click handlers
 window.openDeviceDetailModal = openDeviceDetailModal;
 window.openEditDeviceGroupModal = openEditDeviceGroupModal;
@@ -339,3 +365,4 @@ window.copyDeviceCode = copyDeviceCode;
 window.copyDeviceID = copyDeviceCode;
 window.openDestinationDetailModal = openDestinationDetailModal;
 window.saveDestinationDetailInfo = saveDestinationDetailInfo;
+window.resetDetailPenalty = resetDetailPenalty;
