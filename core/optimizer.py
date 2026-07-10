@@ -64,6 +64,11 @@ class VisibilityOptimizer:
                         optimization_priority = 0
                     WHERE dest_id = %s
                 """, (new_max, new_min, get_kst_now(), dest_id))
+                cursor.execute("""
+                    UPDATE daily_progress 
+                    SET fail_cnt = 0, miss_cnt = 0
+                    WHERE dest_id = %s AND work_date = %s
+                """, (dest_id, get_kst_date()))
                 cursor.execute("DELETE FROM task_position_pool WHERE dest_id = %s", (dest_id,))
                 print(f"  [GRADUATED] {dest_id}: Range {new_min}m ~ {new_max}m")
         finally:
@@ -94,6 +99,11 @@ class VisibilityOptimizer:
                             optimization_priority = 0
                         WHERE dest_id = %s
                     """, (get_kst_now(), dest_id))
+                    cursor.execute("""
+                        UPDATE daily_progress 
+                        SET fail_cnt = 0, miss_cnt = 0
+                        WHERE dest_id = %s AND work_date = %s
+                    """, (dest_id, get_kst_date()))
                     print(f"  [VERIFICATION FINISHED] {dest_id}: Reach minimum limit (300m) without target rank. Stopped optimizer, status kept as VERIFIED.")
                     return
                 
