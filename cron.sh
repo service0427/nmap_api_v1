@@ -26,8 +26,14 @@ echo "--- Cron Cycle Started: $(date '+%Y-%m-%d %H:%M:%S') ---"
 
 # Step 1: Sync Engine (Old Server -> Local)
 # Syncs today's tasks and marks high-failure places for real-time optimization (is_optimizer=1)
-echo "[$(date '+%H:%M:%S')] [Step 1] Running Sync Engine..."
-/usr/bin/timeout 300s $VENV_PYTHON core/sync_engine.py >> "$PROJECT_DIR/logs/sync.log" 2>&1
+# Runs every 5 minutes (minute % 5 == 0) to avoid overloading remote APIs
+CURRENT_MINUTE=$(date +%-M)
+if [ $((CURRENT_MINUTE % 5)) -eq 0 ]; then
+    echo "[$(date '+%H:%M:%S')] [Step 1] Running Sync Engine..."
+    /usr/bin/timeout 300s $VENV_PYTHON core/sync_engine.py >> "$PROJECT_DIR/logs/sync.log" 2>&1
+else
+    echo "[$(date '+%H:%M:%S')] [Step 1] Sync Engine skipped (runs every 5 minutes)."
+fi
 
 # Step 1-1: Async Verifier
 echo "[$(date '+%H:%M:%S')] [Step 1-1] Running Async Verifier..."
@@ -49,6 +55,10 @@ echo "[$(date '+%H:%M:%S')] [Step 3] Running GPS Boundary Optimizer..."
 # Step 5: Task Position Pool Refiller
 echo "[$(date '+%H:%M:%S')] [Step 5] Running Task Position Pool Refiller..."
 /usr/bin/timeout 300s $VENV_PYTHON core/pool_refiller.py >> "$PROJECT_DIR/logs/pool_refiller.log" 2>&1
+
+# Step 6: Slot Target Limit Adjuster
+echo "[$(date '+%H:%M:%S')] [Step 6] Running Slot Target Limit Adjuster..."
+/usr/bin/timeout 300s $VENV_PYTHON core/limit_adjuster.py >> "$PROJECT_DIR/logs/limit_adjuster.log" 2>&1
 
 echo "--- Cron Cycle Finished: $(date '+%Y-%m-%d %H:%M:%S') ---"
 

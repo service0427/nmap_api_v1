@@ -221,6 +221,16 @@ def run_all_syncs(dry_run=False, force=False):
                 print(f"[{module_name.upper()}] ERROR: {e}")
 
 if __name__ == "__main__":
+    # Exclusive Lock to prevent overlapping execution
+    import fcntl
+    lock_file_path = "/tmp/nmap_sync_engine.lock"
+    lock_file = open(lock_file_path, "w")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        print("[Sync Engine] Skip: Another instance is already running.")
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(description="Nmap API Sync Engine")
     parser.add_argument("--dry-run", action="store_true", help="Print collected data without updating database")
     parser.add_argument("--force", action="store_true", help="Force sync bypassing time/cron restrictions")
