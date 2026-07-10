@@ -378,7 +378,6 @@ export function switchDate(dateKey) {
 
 // Action: Reset Device Penalty
 export async function resetPenalty(deviceId) {
-  if (!confirm(`[${deviceId}] 기기의 페널티와 실패 스택을 초기화하시겠습니까?`)) return;
   try {
     const res = await fetch("/api/v1/admin/device/reset_penalty", {
       method: "POST",
