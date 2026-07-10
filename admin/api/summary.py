@@ -232,7 +232,7 @@ async def get_admin_summary(date: str = None):
                     p.max_active_slots,
                     t.start_date,
                     t.end_date,
-                    t.target,
+                    IFNULL(dp.target, t.target) as target,
                     t.slot_status,
                     IFNULL(dp.success, 0) as success,
                     IFNULL(dp.fail, 0) as fail,
@@ -260,6 +260,7 @@ async def get_admin_summary(date: str = None):
                 JOIN places p ON t.dest_id = p.dest_id
                 LEFT JOIN (
                     SELECT site_id, dest_id, 
+                           SUM(total_target) as target,
                            SUM(success_cnt) as success, 
                            SUM(fail_cnt) as fail,
                            SUM(miss_cnt) as miss,
