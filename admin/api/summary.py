@@ -176,39 +176,17 @@ async def get_admin_summary(date: str = None):
                 SELECT d.device_id, d.current_ip, d.hostname, d.hostname as memo, d.status, d.is_alert_muted,
                        d.install_place, d.install_count, d.network_type,
                        DATE_FORMAT(d.penalty_until, '%%Y-%%m-%%d %%H:%%i:%%s') as penalty_until,
-                       tl.dest_name as current_dest,
-                       tl.status as current_status,
-                       tl.result_msg as last_result_msg,
-                       tl.created_at as last_task_at,
-                       IFNULL(stats.today_success, 0) as today_success,
-                       IFNULL(stats.today_fail, 0) as today_fail,
-                       ls.last_success_at
+                       (SELECT dest_name FROM tasks_log WHERE device_id = d.device_id ORDER BY id DESC LIMIT 1) as current_dest,
+                       (SELECT status FROM tasks_log WHERE device_id = d.device_id ORDER BY id DESC LIMIT 1) as current_status,
+                       (SELECT result_msg FROM tasks_log WHERE device_id = d.device_id ORDER BY id DESC LIMIT 1) as last_result_msg,
+                       (SELECT created_at FROM tasks_log WHERE device_id = d.device_id ORDER BY id DESC LIMIT 1) as last_task_at,
+                       IFNULL(ds.success_cnt, 0) as today_success,
+                       IFNULL(ds.fail_cnt, 0) as today_fail,
+                       (SELECT end_time FROM tasks_log WHERE device_id = d.device_id AND status = 'SUCCESS' ORDER BY id DESC LIMIT 1) as last_success_at
                 FROM devices d
-                LEFT JOIN (
-                    SELECT t1.device_id, t1.dest_name, t1.status, t1.result_msg, t1.created_at
-                    FROM tasks_log t1
-                    INNER JOIN (
-                        SELECT device_id, MAX(id) as max_id 
-                        FROM tasks_log 
-                        GROUP BY device_id
-                    ) t2 ON t1.id = t2.max_id
-                ) tl ON d.device_id = tl.device_id
-                LEFT JOIN (
-                    SELECT 
-                        device_id,
-                        COUNT(CASE WHEN status = 'SUCCESS' AND work_date = %s THEN 1 END) as today_success,
-                        COUNT(CASE WHEN status = 'FAIL' AND work_date = %s THEN 1 END) as today_fail
-                    FROM tasks_log
-                    GROUP BY device_id
-                ) stats ON d.device_id = stats.device_id
-                LEFT JOIN (
-                    SELECT device_id, MAX(end_time) as last_success_at
-                    FROM tasks_log
-                    WHERE status = 'SUCCESS'
-                    GROUP BY device_id
-                ) ls ON d.device_id = ls.device_id
+                LEFT JOIN device_daily_stats ds ON d.device_id = ds.device_id AND ds.work_date = %s
                 ORDER BY d.hostname ASC
-            """, (kst_date, kst_date))
+            """, (kst_date,))
             devices_list = cursor.fetchall()
 
             # Pre-calculate silence levels for status warnings
