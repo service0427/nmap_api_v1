@@ -1,4 +1,4 @@
-import { state } from './state.js?v=1.1.22';
+import { state } from './state.js?v=1.1.23';
 
 let mobilePage = 1;
 const ITEMS_PER_PAGE = 30;

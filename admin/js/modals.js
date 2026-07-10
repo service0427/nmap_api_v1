@@ -1,4 +1,4 @@
-import { state } from './state.js?v=1.1.22';
+import { state } from './state.js?v=1.1.23';
 
 export async function openDeviceDetailModal(deviceId) {
   const modal = document.getElementById("device-detail-modal");

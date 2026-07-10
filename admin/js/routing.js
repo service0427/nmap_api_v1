@@ -1,4 +1,4 @@
-import { state } from './state.js?v=1.1.22';
+import { state } from './state.js?v=1.1.23';
 
 // Switch Tabs and update Endpoint History URL
 export function switchTab(tabId, pushState = true) {
