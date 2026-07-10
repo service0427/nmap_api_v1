@@ -1,5 +1,5 @@
-import { state } from './state.js';
-import { formatBytes } from './utils.js';
+import { state } from './state.js?v=1.1.22';
+import { formatBytes } from './utils.js?v=1.1.22';
 
 export function filterLteCards() {
   const container = document.getElementById("lte-cards-container");

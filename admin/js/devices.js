@@ -1,4 +1,4 @@
-import { state } from './state.js';
+import { state } from './state.js?v=1.1.22';
 
 export function toggleTotalDeviceList() {
   state.isTotalListOpen = !state.isTotalListOpen;
