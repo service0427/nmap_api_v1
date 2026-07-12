@@ -304,9 +304,14 @@ def request_task(req: TaskRequest, request: Request):
                 if final_arrival_s < 300: 
                     final_arrival_s = 300
 
-                final_lat, final_lng, final_dist, found_visible, search_keyword = 0.0, 0.0, 0.0, False, keywords[0]
-                d_min_m = max(3000, int(task['dist_min_m']))
-                d_max_m = min(15000, max(d_min_m, int(task['dist_max_m'])))
+                # If the target's maximum visibility distance is less than 3000m, respect its narrow range
+                # to prevent allocating it outside its search visibility and causing ADDRESS_NOT_FOUND.
+                if int(task['dist_max_m']) < 3000:
+                    d_min_m = int(task['dist_min_m'])
+                    d_max_m = int(task['dist_max_m'])
+                else:
+                    d_min_m = max(3000, int(task['dist_min_m']))
+                    d_max_m = min(15000, max(d_min_m, int(task['dist_max_m'])))
 
                 if pool_row:
                     final_lat = float(pool_row['lat'])
