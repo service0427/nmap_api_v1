@@ -349,9 +349,11 @@ def request_task(req: TaskRequest, request: Request):
 
                 # Speed and Arrival time calculation
                 if final_dist < 3000:
-                    # Exception Places: Allow realistic travel speeds (12 to 22 km/h) and shorter travel times
-                    final_speed = round(random.uniform(12.0, 22.0), 2)
-                    final_arrival_s = max(60, int((final_dist / 1000.0) / final_speed * 3600))
+                    # Exception Places: Simulate slow crawl/city traffic (3.0 to 6.0 km/h) and enforce at least 5 minutes (300s) travel time
+                    final_speed = round(random.uniform(3.0, 6.0), 2)
+                    final_arrival_s = max(300, int((final_dist / 1000.0) / final_speed * 3600))
+                    # Recalculate final speed based on the adjusted arrival time
+                    final_speed = round((final_dist / 1000.0) / (final_arrival_s / 3600.0), 2)
                     logger.info(f"[*] Exception Place Speed/Time adjustment: speed={final_speed}km/h, time={final_arrival_s}s")
                 else:
                     # Normal Places: Maintain average/configured travel time
