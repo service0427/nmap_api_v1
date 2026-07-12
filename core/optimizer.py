@@ -174,6 +174,22 @@ class VisibilityOptimizer:
                     is_competitive = True
                     break
 
+        # 1b. 상호명 중복 여부 실측 확인 (동일한 상호명이 DB에 2개 이상 등록되어 있다면 구분 경쟁 필요 대상으로 판단)
+        if not is_competitive:
+            try:
+                conn_check = pymysql.connect(**DB_CONFIG)
+                with conn_check.cursor() as check_cursor:
+                    check_cursor.execute("SELECT COUNT(*) FROM places WHERE name = %s", (name,))
+                    name_count = check_cursor.fetchone()
+                    count_val = name_count[0] if isinstance(name_count, tuple) else name_count.get('COUNT(*)', 1)
+                    if count_val >= 2:
+                        is_competitive = True
+                        print(f"  -> Store name '{name}' is duplicated in DB ({count_val} occurrences). Treating as competitive.")
+            except Exception as e_check:
+                print(f"  [!] Error checking name uniqueness: {e_check}")
+            finally:
+                conn_check.close()
+
         if not is_competitive:
             print(f"  -> Non-competitive unique place. Automatically graduating to standard range (1000m ~ 3000m).")
             self.update_place_verified(dest_id, 3000)
