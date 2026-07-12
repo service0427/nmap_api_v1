@@ -303,6 +303,8 @@ def request_task(req: TaskRequest, request: Request):
                 final_arrival_s = req.arrival_time if req.arrival_time and int(req.arrival_time) > 0 else random.randint(int(task['arr_min_s']), int(task['arr_max_s']))
                 if final_arrival_s < 300: 
                     final_arrival_s = 300
+ 
+                final_lat, final_lng, final_dist, found_visible, search_keyword = 0.0, 0.0, 0.0, False, keywords[0]
 
                 # If the target's maximum visibility distance is less than 3000m, respect its narrow range
                 # to prevent allocating it outside its search visibility and causing ADDRESS_NOT_FOUND.
