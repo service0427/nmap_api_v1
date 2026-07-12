@@ -85,11 +85,11 @@ def report_result(report: ResultReport, request: Request):
                 if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
                     update_device_stats(cursor, report.device_id, fail=1)
                     
-                    # Check if daily fail_cnt >= 60 to enforce 1-hour penalty block
+                    # Check if daily fail_cnt >= 60 to enforce 10-minute penalty block
                     cursor.execute("SELECT fail_cnt FROM device_daily_stats WHERE device_id = %s AND work_date = %s", (report.device_id, kst_date))
                     stat_row = cursor.fetchone()
                     if stat_row and stat_row.get('fail_cnt', 0) >= 60:
-                        penalty_release = kst_now + timedelta(hours=1)
+                        penalty_release = kst_now + timedelta(minutes=10)
                         cursor.execute("UPDATE devices SET penalty_until = %s WHERE device_id = %s", (penalty_release, report.device_id))
                         logger.warning(f"[PENALTY_ACTIVATED] Device {report.device_id} has exceeded 60 failures today. Blocked until {penalty_release}.")
                     

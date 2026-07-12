@@ -122,7 +122,7 @@ def fetch_data():
             search_keyword = item.get("keyword") or ''
             
             # Rudolph slots work_amount is 10
-            work_count = 10
+            work_count = 5
             
             standardized_data.append({
                 'sid': int(sid),
