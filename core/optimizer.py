@@ -165,7 +165,7 @@ class VisibilityOptimizer:
 
         # 1. 경쟁이 심한 카테고리 여부 판단
         is_competitive = False
-        competitive_pattern = r'누수|청소|하수구|변기|이사|싱크대|뚫음'
+        competitive_pattern = r'누수|청소|하수구|변기|이사|싱크대|뚫음|철거'
         if re.search(competitive_pattern, name):
             is_competitive = True
         else:
@@ -173,6 +173,11 @@ class VisibilityOptimizer:
                 if re.search(competitive_pattern, kw):
                     is_competitive = True
                     break
+
+        if not is_competitive:
+            print(f"  -> Non-competitive unique place. Automatically graduating to standard range (1000m ~ 3000m).")
+            self.update_place_verified(dest_id, 3000)
+            return
 
         # 2. 최근 24시간 내 클라이언트 실패 이력 존재 여부 및 전날 최종 목적지 거리(last_dist_m) 확인
         conn = pymysql.connect(**DB_CONFIG)

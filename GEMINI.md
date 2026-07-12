@@ -141,3 +141,4 @@
 [32m6|nmap-api | [39mINFO:     121.172.70.162:52450 - "POST /api/v1/update_status HTTP/1.1" 200 OK).
 - **Sync Code**: Use the  command defined in  to push local changes to AWS.
 - **Speed Constraints**: Enforce a minimum speed limit of 3.0 km/h. For the maximum speed limit, enforce a system cap of 150.0 km/h. Do not arbitrarily enforce intermediate speed caps (e.g., 25 km/h) unless explicitly requested.
+- **Search Keyword Limitation (Strict)**: The client device always searches Naver Maps using ONLY the store name (`target_name`/`places.name`), NEVER the slot search keyword (except for competitive generic categories like "누수", "청소", "하수구", "변기", "철거", "이사", "싱크대", "뚫음"). The search keyword is strictly reserved for independent ranking measurements. Accordingly, the optimizer must never shrink the distance range of non-competitive unique store names, auto-graduating them to the standard 1,000m ~ 3,000m range.
