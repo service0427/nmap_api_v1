@@ -359,10 +359,9 @@ def request_task(req: TaskRequest, request: Request):
                     if final_speed < 3.0:
                         final_arrival_s = max(60, int((final_dist / 1000.0) / 3.0 * 3600))
                         final_speed = 3.0
-                    # Maximum speed constraint for short distances (25.0 km/h) to keep it realistic
-                    elif final_speed > 25.0:
-                        final_arrival_s = int((final_dist / 1000.0) / 25.0 * 3600)
-                        final_speed = 25.0
+                    elif final_speed > 80.0:
+                        final_arrival_s = int((final_dist / 1000.0) / 80.0 * 3600)
+                        final_speed = 80.0
                     logger.info(f"[*] Exception Place Speed/Time adjustment: speed={final_speed}km/h, time={final_arrival_s}s")
                 else:
                     # Normal Places: Maintain average/configured travel time
