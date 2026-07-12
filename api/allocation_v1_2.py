@@ -326,6 +326,22 @@ def request_task(req: TaskRequest, request: Request):
                     # Mark it as used
                     cursor.execute("UPDATE task_position_pool SET is_used = 1 WHERE id = %s", (pool_row['id'],))
                     logger.info(f"[*] Pool-based Allocation for: {task['name']} (Using pool id {pool_row['id']}, dist: {final_dist}m)")
+
+                    # Check remaining available verified coordinates (rank 1-8) in the pool
+                    cursor.execute("""
+                        SELECT COUNT(*) as cnt 
+                        FROM task_position_pool 
+                        WHERE dest_id = %s AND created_date = %s AND is_used = 0
+                          AND (actual_rank BETWEEN 1 AND 8)
+                    """, (task['dest_id'], kst_date))
+                    remaining_verified = cursor.fetchone()['cnt']
+                    if remaining_verified == 0 and int(task['is_optimizer']) == 1:
+                        cursor.execute("""
+                            UPDATE places 
+                            SET is_optimizer = 0 
+                            WHERE dest_id = %s
+                        """, (task['dest_id'],))
+                        logger.info(f"[*] Verified Pool Exhausted for {task['name']} ({task['dest_id']}). Auto-transitioned is_optimizer to 0.")
                 else:
                     # Always dynamic calculation for normal tasks
                     final_lat, final_lng, final_dist, _ = calculate_gps_and_speed(float(task['lat']), float(task['lng']), d_min_m, d_max_m, 0, 0, fixed_arrival_s=temp_arrival_s)
