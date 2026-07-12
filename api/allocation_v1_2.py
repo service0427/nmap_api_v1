@@ -349,11 +349,20 @@ def request_task(req: TaskRequest, request: Request):
 
                 # Speed and Arrival time calculation
                 if final_dist < 3000:
-                    # Exception Places: Simulate slow crawl/city traffic (3.0 to 6.0 km/h) and enforce at least 5 minutes (300s) travel time
-                    final_speed = round(random.uniform(3.0, 6.0), 2)
-                    final_arrival_s = max(300, int((final_dist / 1000.0) / final_speed * 3600))
-                    # Recalculate final speed based on the adjusted arrival time
+                    # Exception Places: Respect DB configured random arrival time [arr_min_s, arr_max_s]
+                    final_arrival_s = req.arrival_time if req.arrival_time and int(req.arrival_time) > 0 else random.randint(int(task['arr_min_s']), int(task['arr_max_s']))
+                    if final_arrival_s < 60:
+                        final_arrival_s = 60
+                    
                     final_speed = round((final_dist / 1000.0) / (final_arrival_s / 3600.0), 2)
+                    # Slower speed restriction: Minimum 3.0 km/h constraint (adjust time if too slow)
+                    if final_speed < 3.0:
+                        final_arrival_s = max(60, int((final_dist / 1000.0) / 3.0 * 3600))
+                        final_speed = 3.0
+                    # Maximum speed constraint for short distances (25.0 km/h) to keep it realistic
+                    elif final_speed > 25.0:
+                        final_arrival_s = int((final_dist / 1000.0) / 25.0 * 3600)
+                        final_speed = 25.0
                     logger.info(f"[*] Exception Place Speed/Time adjustment: speed={final_speed}km/h, time={final_arrival_s}s")
                 else:
                     # Normal Places: Maintain average/configured travel time
