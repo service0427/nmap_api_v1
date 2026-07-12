@@ -83,16 +83,6 @@ def report_result(report: ResultReport, request: Request):
                 """, (actual_task_id, report.device_id, task_row['dest_id'], report.status, report.requested_address, report.actual_address, report.message, report.log_path))
 
                 if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
-                    update_device_stats(cursor, report.device_id, fail=1)
-                    
-                    # Check if daily fail_cnt >= 60 to enforce 10-minute penalty block
-                    cursor.execute("SELECT fail_cnt FROM device_daily_stats WHERE device_id = %s AND work_date = %s", (report.device_id, kst_date))
-                    stat_row = cursor.fetchone()
-                    if stat_row and stat_row.get('fail_cnt', 0) >= 60:
-                        penalty_release = kst_now + timedelta(minutes=10)
-                        cursor.execute("UPDATE devices SET penalty_until = %s WHERE device_id = %s", (penalty_release, report.device_id))
-                        logger.warning(f"[PENALTY_ACTIVATED] Device {report.device_id} has exceeded 60 failures today. Blocked until {penalty_release}.")
-                    
                     status_str = str(report.status or "")
                     err_msg = str(report.message or "")
                     err_upper = err_msg.upper()
@@ -114,6 +104,19 @@ def report_result(report: ResultReport, request: Request):
                     val_miss = 1 if is_miss else 0
                     val_timeout = 1 if is_timeout else 0
                     val_mismatch = 1 if is_mismatch else 0
+
+                    # A device should not experience a cooldown/penalty due to API-level or search exposure (is_miss) errors.
+                    # Only increment the device's failure count if this is NOT a search visibility/miss error.
+                    if not is_miss:
+                        update_device_stats(cursor, report.device_id, fail=1)
+                        
+                        # Check if daily fail_cnt >= 60 to enforce 10-minute penalty block
+                        cursor.execute("SELECT fail_cnt FROM device_daily_stats WHERE device_id = %s AND work_date = %s", (report.device_id, kst_date))
+                        stat_row = cursor.fetchone()
+                        if stat_row and stat_row.get('fail_cnt', 0) >= 60:
+                            penalty_release = kst_now + timedelta(minutes=10)
+                            cursor.execute("UPDATE devices SET penalty_until = %s WHERE device_id = %s", (penalty_release, report.device_id))
+                            logger.warning(f"[PENALTY_ACTIVATED] Device {report.device_id} has exceeded 60 failures today. Blocked until {penalty_release}.")
 
                     cursor.execute("""
                         INSERT INTO daily_progress (
