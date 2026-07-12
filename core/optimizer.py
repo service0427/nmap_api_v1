@@ -41,6 +41,31 @@ class VisibilityOptimizer:
         finally:
             conn.close()
 
+    def update_place_default(self, dest_id):
+        """유니크 상호 졸업: 오리지널 기본 규격(3km ~ 15km)으로 안전 복원"""
+        conn = pymysql.connect(**DB_CONFIG, autocommit=True)
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE places 
+                    SET dist_max_m = 15000, 
+                        dist_min_m = 3000,
+                        is_optimizer = 0,
+                        check_status = 'VERIFIED',
+                        last_optimized_at = %s,
+                        optimization_priority = 0
+                    WHERE dest_id = %s
+                """, (get_kst_now(), dest_id))
+                cursor.execute("""
+                    UPDATE daily_progress 
+                    SET fail_cnt = 0, miss_cnt = 0
+                    WHERE dest_id = %s AND work_date = %s
+                """, (dest_id, get_kst_date()))
+                cursor.execute("DELETE FROM task_position_pool WHERE dest_id = %s", (dest_id,))
+                print(f"  [UNIQUE-RESTORED-GRADUATED] {dest_id}: Default Range 3000m ~ 15000m restored.")
+        finally:
+            conn.close()
+
     def update_place_verified(self, dest_id, best_dist_m):
         """졸업 성공: 가시거리 확정 및 optimizer 모드 해제"""
         conn = pymysql.connect(**DB_CONFIG, autocommit=True)
@@ -191,8 +216,8 @@ class VisibilityOptimizer:
                 conn_check.close()
 
         if not is_competitive:
-            print(f"  -> Non-competitive unique place. Automatically graduating to standard range (1000m ~ 3000m).")
-            self.update_place_verified(dest_id, 3000)
+            print(f"  -> Non-competitive unique place. Automatically graduating to default range (3000m ~ 15000m).")
+            self.update_place_default(dest_id)
             return
 
         # 2. 최근 24시간 내 클라이언트 실패 이력 존재 여부 및 전날 최종 목적지 거리(last_dist_m) 확인
