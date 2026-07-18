@@ -29,7 +29,7 @@ class Config:
             'database': db_name,
             'charset': 'utf8mb4',
             'cursorclass': pymysql.cursors.DictCursor,
-            'init_command': "SET time_zone='+09:00'"
+            'init_command': "SET time_zone='+09:00', innodb_snapshot_isolation=OFF"
         }
         
         if db_host:
