@@ -305,14 +305,18 @@ def request_task(req: TaskRequest, request: Request):
                     keywords = [task['name']]
                 random.shuffle(keywords)
                 
-                final_arrival_s = req.arrival_time if req.arrival_time and int(req.arrival_time) > 0 else random.randint(int(task['arr_min_s']), int(task['arr_max_s']))
-                if final_arrival_s < 300: 
-                    final_arrival_s = 300
- 
+                # In v1.2: Normal companies/places MUST reach navigation, and their average travel time should maintain the currently set time!
+                # However, those that do not meet this condition (short visibility range under 3000m) are exceptions; make them reach as much as possible,
+                # and it doesn't matter if they don't meet the set time.
+                
+                # First, prepare a default arrival time for the dynamic coordinates generation
+                temp_arrival_s = req.arrival_time if req.arrival_time and int(req.arrival_time) > 0 else random.randint(int(task['arr_min_s']), int(task['arr_max_s']))
+                if temp_arrival_s < 300: 
+                    temp_arrival_s = 300
+
                 final_lat, final_lng, final_dist, found_visible, search_keyword = 0.0, 0.0, 0.0, False, keywords[0]
 
-                # If the target's maximum visibility distance is less than 3000m, respect its narrow range
-                # to prevent allocating it outside its search visibility and causing ADDRESS_NOT_FOUND.
+                # Setup distance ranges based on optimized visibility
                 if int(task['dist_max_m']) < 3000:
                     d_min_m = int(task['dist_min_m'])
                     d_max_m = int(task['dist_max_m'])
@@ -327,18 +331,55 @@ def request_task(req: TaskRequest, request: Request):
                     # Mark it as used
                     cursor.execute("UPDATE task_position_pool SET is_used = 1 WHERE id = %s", (pool_row['id'],))
                     logger.info(f"[*] Pool-based Allocation for: {task['name']} (Using pool id {pool_row['id']}, dist: {final_dist}m)")
+
+                    # Check remaining available verified coordinates (rank 1-8) in the pool
+                    cursor.execute("""
+                        SELECT COUNT(*) as cnt 
+                        FROM task_position_pool 
+                        WHERE dest_id = %s AND created_date = %s AND is_used = 0
+                          AND (actual_rank BETWEEN 1 AND 8)
+                    """, (task['dest_id'], kst_date))
+                    remaining_verified = cursor.fetchone()['cnt']
+                    if remaining_verified == 0 and int(task['is_optimizer']) == 1:
+                        cursor.execute("""
+                            UPDATE places 
+                            SET is_optimizer = 0 
+                            WHERE dest_id = %s
+                        """, (task['dest_id'],))
+                        logger.info(f"[*] Verified Pool Exhausted for {task['name']} ({task['dest_id']}). Auto-transitioned is_optimizer to 0.")
                 else:
                     # Always dynamic calculation for normal tasks
-                    final_lat, final_lng, final_dist, _ = calculate_gps_and_speed(float(task['lat']), float(task['lng']), d_min_m, d_max_m, 0, 0, fixed_arrival_s=final_arrival_s)
+                    final_lat, final_lng, final_dist, _ = calculate_gps_and_speed(float(task['lat']), float(task['lng']), d_min_m, d_max_m, 0, 0, fixed_arrival_s=temp_arrival_s)
                     logger.info(f"[*] Dynamic Allocation for: {task['name']} (dist: {final_dist}m)")
-                
-                final_speed = round((final_dist / 1000.0) / (final_arrival_s / 3600.0), 2)
-                if final_speed < 3.0:
-                    final_arrival_s = max(60, int((final_dist / 1000.0) / 3.0 * 3600))
-                    final_speed = 3.0
-                elif final_speed > 80.0:
-                    final_arrival_s = int((final_dist / 1000.0) / 80.0 * 3600)
-                    final_speed = 80.0
+
+                # Speed and Arrival time calculation
+                if final_dist < 3000:
+                    # Exception Places: Respect DB configured random arrival time [arr_min_s, arr_max_s]
+                    final_arrival_s = req.arrival_time if req.arrival_time and int(req.arrival_time) > 0 else random.randint(int(task['arr_min_s']), int(task['arr_max_s']))
+                    if final_arrival_s < 60:
+                        final_arrival_s = 60
+                    
+                    final_speed = round((final_dist / 1000.0) / (final_arrival_s / 3600.0), 2)
+                    # Slower speed restriction: Minimum 3.0 km/h constraint (adjust time if too slow)
+                    if final_speed < 3.0:
+                        final_arrival_s = max(60, int((final_dist / 1000.0) / 3.0 * 3600))
+                        final_speed = 3.0
+                    elif final_speed > 150.0:
+                        final_arrival_s = int((final_dist / 1000.0) / 150.0 * 3600)
+                        final_speed = 150.0
+                    logger.info(f"[*] Exception Place Speed/Time adjustment: speed={final_speed}km/h, time={final_arrival_s}s")
+                else:
+                    # Normal Places: Maintain average/configured travel time
+                    final_arrival_s = req.arrival_time if req.arrival_time and int(req.arrival_time) > 0 else random.randint(int(task['arr_min_s']), int(task['arr_max_s']))
+                    if final_arrival_s < 300: 
+                        final_arrival_s = 300
+                    final_speed = round((final_dist / 1000.0) / (final_arrival_s / 3600.0), 2)
+                    if final_speed < 3.0:
+                        final_arrival_s = max(60, int((final_dist / 1000.0) / 3.0 * 3600))
+                        final_speed = 3.0
+                    elif final_speed > 150.0:
+                        final_arrival_s = int((final_dist / 1000.0) / 150.0 * 3600)
+                        final_speed = 150.0
 
                 # 5. Identity Spoofing
                 spoofed_id = generate_spoofed_identity()

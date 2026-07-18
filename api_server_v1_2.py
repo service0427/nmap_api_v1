@@ -12,8 +12,8 @@ from api.helpers import (
     get_kst_now
 )
 import api.helpers as helpers
-from api.allocation_v1_2 import router as allocation_router
-from api.reporting_v1_2 import router as reporting_router
+from api.allocation import router as allocation_router
+from api.reporting import router as reporting_router
 from api.system import router as system_router
 
 from core.admin_api import register_admin_endpoints
