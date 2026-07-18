@@ -409,6 +409,41 @@ export async function resetPenalty(deviceId) {
   }
 }
 
+// Action: Reset All Device Penalties
+export async function resetAllPenalties() {
+  if (!confirm("정말로 모든 장비의 페널티 차단 및 오늘 실패 횟수를 일괄 해제하시겠습니까?")) {
+    return;
+  }
+  
+  // 1. Optimistically update local memory state instantly! (0.01s response)
+  if (state.rawDevices) {
+    state.rawDevices.forEach(d => {
+      d.penalty_until = null;
+      d.today_fail = 0;
+    });
+  }
+  if (state.lastApiData && state.lastApiData.devices) {
+    state.lastApiData.devices.forEach(d => {
+      d.penalty_until = null;
+      d.today_fail = 0;
+    });
+  }
+  
+  // 2. Redraw active UI immediately
+  filterDevicesLocally();
+
+  try {
+    const res = await fetch("/api/v1/admin/device/reset_all_penalties", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    if (!res.ok) throw new Error("Reset All Penalties fail");
+    fetchData(); // Background fetch to sync fully
+  } catch (err) {
+    alert("전체 페널티 일괄 초기화 실패: " + err.message);
+  }
+}
+
 // Bind to window for HTML click handlers
 window.fetchData = fetchData;
 window.toggleMute = toggleMute;
@@ -417,3 +452,4 @@ window.updateDestStatus = updateDestStatus;
 window.updateDestOptimizer = updateDestOptimizer;
 window.switchDate = switchDate;
 window.resetPenalty = resetPenalty;
+window.resetAllPenalties = resetAllPenalties;

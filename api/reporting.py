@@ -45,23 +45,81 @@ class StatusUpdate(BaseModel):
 def report_result(report: ResultReport, request: Request):
     helpers.request_counter += 1
     actual_task_id = report.task_id or report.log_id
+    logger.info(f"[*] /api/v1/report_result payload: task_id={report.task_id}, log_id={report.log_id}, device_id={report.device_id}, status={report.status}, message={report.message}, drive_dist={report.drive_dist}, drive_time={report.drive_time}")
     if not actual_task_id:
         return {"status": "REPORTED"}
         
     kst_now, kst_date = get_kst_now().replace(tzinfo=None), get_kst_date()
     try:
         with get_db_cursor() as cursor:
-            cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id, result_msg FROM tasks_log WHERE id = %s", (actual_task_id,))
+            cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id, client_dist_m, client_time_s, result_msg, start_lat, start_lng FROM tasks_log WHERE id = %s", (actual_task_id,))
             task_row = cursor.fetchone()
             if not task_row:
+                logger.warning(f"[*] report_result: task ID {actual_task_id} not found in DB")
                 return {"status": "REPORTED"}
             status_upper = (task_row['status'] or '').upper()
-            if status_upper in ['SUCCESS', 'FAIL'] or status_upper.startswith('FAIL'): 
-                return {"status": "REPORTED"}
+            logger.info(f"[*] report_result db check: task_id={actual_task_id}, db_status={status_upper}, db_device_id={task_row['device_id']}, db_client_dist={task_row['client_dist_m']}, db_client_time={task_row['client_time_s']}")
             
-            client_dist = int(report.drive_dist) if report.drive_dist and str(report.drive_dist).isdigit() else 0
-            client_time = int(report.drive_time) if report.drive_time and str(report.drive_time).isdigit() else 0
+            def parse_int_metric(val):
+                if val is None:
+                    return 0
+                try:
+                    return int(float(val))
+                except (ValueError, TypeError):
+                    return 0
+
+            client_dist = parse_int_metric(report.drive_dist)
+            client_time = parse_int_metric(report.drive_time)
             client_speed = float(report.calc_speed) if report.calc_speed else 0.0
+            
+            logger.info(f"[*] report_result processing: status_upper={status_upper}, client_dist={client_dist}, client_time={client_time}, is_finished={status_upper in ['SUCCESS', 'FAIL'] or status_upper.startswith('FAIL')}")
+
+            if status_upper in ['SUCCESS', 'FAIL'] or status_upper.startswith('FAIL'):
+                # Even if already reported, if DB has under 50 for client metrics but incoming are >= 50, update them
+                db_dist = task_row.get('client_dist_m') or 0
+                db_time = task_row.get('client_time_s') or 0
+                if db_dist < 50 or db_time < 50:
+                    cursor.execute("""
+                        UPDATE tasks_log 
+                        SET client_dist_m = %s, client_time_s = %s, client_speed_kmh = %s, result_msg = %s 
+                        WHERE id = %s
+                    """, (client_dist, client_time, client_speed, report.message, actual_task_id))
+                    
+                # Revert FAIL_ZERO_DRIVE or FAIL to SUCCESS if we now have valid metrics
+                if (status_upper == 'FAIL_ZERO_DRIVE' or status_upper == 'FAIL' or status_upper.startswith('FAIL')) and client_dist >= 50 and client_time >= 50:
+                    cursor.execute("UPDATE tasks_log SET status = 'SUCCESS', end_time = %s WHERE id = %s", (kst_now, actual_task_id))
+                    update_device_stats(cursor, report.device_id, success=1)
+                    cursor.execute("DELETE FROM fail_log WHERE log_id = %s", (actual_task_id,))
+                    cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
+                    cursor.execute("""
+                        INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) 
+                        VALUES (%s, %s, %s, %s, 1, 0, 0, %s, %s) 
+                        ON DUPLICATE KEY UPDATE 
+                            success_cnt=success_cnt+1, 
+                            fail_cnt=GREATEST(0, fail_cnt-1), 
+                            last_success_at=VALUES(last_success_at), 
+                            miss_cnt=0,
+                            last_dist_m=VALUES(last_dist_m)
+                    """, (kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid'], task_row['distance_m'], kst_now))
+                
+                # Turn SUCCESS to FAIL_ZERO_DRIVE if metrics are under 50
+                elif status_upper == 'SUCCESS' and (client_dist < 50 or client_time < 50):
+                    new_msg = f"FAIL_ZERO_DRIVE: SUCCESS reported with dist={client_dist}, time={client_time} (original msg: {report.message})"
+                    cursor.execute("UPDATE tasks_log SET status = 'FAIL_ZERO_DRIVE', result_msg = %s WHERE id = %s", (new_msg, actual_task_id))
+                    update_device_stats(cursor, report.device_id, fail=1)
+                    cursor.execute("""
+                        INSERT INTO fail_log (log_id, device_id, dest_id, fail_status, error_msg)
+                        VALUES (%s, %s, %s, 'FAIL_ZERO_DRIVE', %s)
+                    """, (actual_task_id, report.device_id, task_row['dest_id'], new_msg))
+                    cursor.execute("""
+                        UPDATE daily_progress 
+                        SET success_cnt = GREATEST(0, success_cnt - 1),
+                            fail_cnt = fail_cnt + 1,
+                            last_fail_at = %s
+                        WHERE work_date = %s AND site_id = %s AND dest_id = %s AND sid = %s
+                    """, (kst_now, kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid']))
+                
+                return {"status": "REPORTED"}
 
             orig_msg = task_row['result_msg'] or ""
             is_excess = orig_msg.startswith("[EXCESS_ALLOCATION]")
@@ -81,6 +139,20 @@ def report_result(report: ResultReport, request: Request):
                     INSERT INTO fail_log (log_id, device_id, dest_id, fail_status, requested_address, actual_address, error_msg, log_path)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (actual_task_id, report.device_id, task_row['dest_id'], report.status, report.requested_address, report.actual_address, report.message, report.log_path))
+
+                is_error_log = False
+                err_msg = (report.message or "").upper()
+                status_str = (report.status or "").upper()
+                if "ERROR_LOG_DETECTED" in err_msg or "ERROR_LOG_DETECTED" in status_str:
+                    is_error_log = True
+
+                if is_error_log and task_row and task_row.get('start_lat') and task_row.get('start_lng'):
+                    cursor.execute("""
+                        UPDATE task_position_pool 
+                        SET is_used = 0 
+                        WHERE dest_id = %s AND lat = %s AND lng = %s
+                    """, (task_row['dest_id'], task_row['start_lat'], task_row['start_lng']))
+                    logger.info(f"[*] ERROR_LOG_DETECTED: Reclaiming pool coordinate ({task_row['start_lat']}, {task_row['start_lng']}) for dest_id {task_row['dest_id']}")
 
                 if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
                     status_str = str(report.status or "")
@@ -183,8 +255,28 @@ def update_status(data: StatusUpdate, request: Request):
             d_time = safe_int(data.drive_time)
             d_dist = safe_int(data.drive_dist)
             
-            cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id, result_msg FROM tasks_log WHERE id = %s", (actual_task_id,))
+            cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id, client_dist_m, client_time_s, result_msg, start_lat, start_lng FROM tasks_log WHERE id = %s", (actual_task_id,))
             task_row = cursor.fetchone()
+
+            # 1. Terminal State Protection: If the task is already finished, do not allow update_status to overwrite it
+            if task_row:
+                db_status = (task_row.get('status') or '').upper()
+                if db_status in ['SUCCESS', 'FAIL', 'FAIL_ZERO_DRIVE'] or db_status.startswith('FAIL'):
+                    return {"status": "REPORTED"}
+
+            # Validation: SUCCESS must have drive_dist >= 50 and drive_time >= 50
+            if data.status == 'SUCCESS':
+                db_status = (task_row.get('status') or '').upper() if task_row else ''
+                db_dist = task_row.get('client_dist_m') or 0 if task_row else 0
+                db_time = task_row.get('client_time_s') or 0 if task_row else 0
+                
+                # Only perform FAIL_ZERO_DRIVE check if client actually sent metrics in this request
+                if d_dist is not None and d_time is not None:
+                    if db_status == 'SUCCESS' or (db_dist >= 50 and db_time >= 50):
+                        pass
+                    elif d_dist < 50 or d_time < 50:
+                        data.status = 'FAIL_ZERO_DRIVE'
+                        data.error_msg = f"FAIL_ZERO_DRIVE: SUCCESS reported with dist={d_dist}, time={d_time} (original msg: {data.error_msg or ''})"
             
             if data.device_id:
                 update_device_stats(cursor, data.device_id, duration=d_time if d_time else 0)
@@ -237,6 +329,20 @@ def update_status(data: StatusUpdate, request: Request):
                             INSERT INTO fail_log (log_id, device_id, dest_id, fail_status, requested_address, actual_address, error_msg, log_path)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         """, (actual_task_id, dev_id, task_row['dest_id'] if task_row else "Unknown", data.status, data.requested_address, data.actual_address, data.error_msg, data.log_path))
+
+                        is_error_log = False
+                        err_msg = (data.error_msg or "").upper()
+                        status_str = (data.status or "").upper()
+                        if "ERROR_LOG_DETECTED" in err_msg or "ERROR_LOG_DETECTED" in status_str:
+                            is_error_log = True
+
+                        if is_error_log and task_row and task_row.get('start_lat') and task_row.get('start_lng'):
+                            cursor.execute("""
+                                UPDATE task_position_pool 
+                                SET is_used = 0 
+                                WHERE dest_id = %s AND lat = %s AND lng = %s
+                            """, (task_row['dest_id'], task_row['start_lat'], task_row['start_lng']))
+                            logger.info(f"[*] ERROR_LOG_DETECTED: Reclaiming pool coordinate ({task_row['start_lat']}, {task_row['start_lng']}) for dest_id {task_row['dest_id']}")
 
                         if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
                             if data.device_id:

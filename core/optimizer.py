@@ -42,13 +42,13 @@ class VisibilityOptimizer:
             conn.close()
 
     def update_place_default(self, dest_id):
-        """유니크 상호 졸업: 오리지널 기본 규격(3km ~ 15km)으로 안전 복원"""
+        """유니크 상호 졸업: 표준 규격(3,000m ~ 10,000m)으로 졸업 복원"""
         conn = pymysql.connect(**DB_CONFIG, autocommit=True)
         try:
             with conn.cursor() as cursor:
                 cursor.execute("""
                     UPDATE places 
-                    SET dist_max_m = 15000, 
+                    SET dist_max_m = 10000, 
                         dist_min_m = 3000,
                         is_optimizer = 0,
                         check_status = 'VERIFIED',
@@ -62,7 +62,7 @@ class VisibilityOptimizer:
                     WHERE dest_id = %s AND work_date = %s
                 """, (dest_id, get_kst_date()))
                 cursor.execute("DELETE FROM task_position_pool WHERE dest_id = %s", (dest_id,))
-                print(f"  [UNIQUE-RESTORED-GRADUATED] {dest_id}: Default Range 3000m ~ 15000m restored.")
+                print(f"  [UNIQUE-RESTORED-GRADUATED] {dest_id}: Standard Range 3000m ~ 10000m graduated.")
         finally:
             conn.close()
 
@@ -216,7 +216,7 @@ class VisibilityOptimizer:
                 conn_check.close()
 
         if not is_competitive:
-            print(f"  -> Non-competitive unique place. Automatically graduating to default range (3000m ~ 15000m).")
+            print(f"  -> Non-competitive unique place. Automatically graduating to standard range (3000m ~ 10000m).")
             self.update_place_default(dest_id)
             return
 

@@ -70,13 +70,13 @@ def aggregate_daily_quota():
                     except Exception as ex_reset:
                         print(f"    Error resetting daily optimizer places: {ex_reset}")
                     
-                    # Daily Reset of Device penalties: Clear penalty_until to let failed devices retry on the new day
-                    print("  Running Daily Device Penalty Reset...")
-                    try:
-                        cursor.execute("UPDATE devices SET penalty_until = NULL")
-                        print(f"    Reset {cursor.rowcount} devices penalty status for the new day.")
-                    except Exception as ex_dev_reset:
-                        print(f"    Error resetting device penalties: {ex_dev_reset}")
+                    # Daily Reset of Device penalties: Disabled as requested (no midnight reset)
+                    print("  Running Daily Device Penalty Reset (Disabled)...")
+                    # try:
+                    #     cursor.execute("UPDATE devices SET penalty_until = NULL")
+                    #     print(f"    Reset {cursor.rowcount} devices penalty status for the new day.")
+                    # except Exception as ex_dev_reset:
+                    #     print(f"    Error resetting device penalties: {ex_dev_reset}")
 
                     # Automated daily database backup
                     print("  Running Automated Daily Database Backup...")

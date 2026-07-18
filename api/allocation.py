@@ -14,6 +14,7 @@ from api.helpers import (
     update_device_stats,
     log_allocation_failure,
     format_address,
+    get_client_ip,
     logger
 )
 from core.utils import (
@@ -41,6 +42,10 @@ def request_task(req: TaskRequest, request: Request):
     kst_now, kst_date = get_kst_now().replace(tzinfo=None), get_kst_date()
     success_limit = Config.get_dest_success_limit()
     client_ip = req.ip if req.ip and req.ip != "0.0.0.0" and req.ip != "unknown" else None
+    if not client_ip:
+        resolved_ip = get_client_ip(request)
+        if resolved_ip and resolved_ip != "unknown":
+            client_ip = resolved_ip
     WORKING_LOCK_SEC = 900 # 15 Minutes to wait for client progress report
     
     try:

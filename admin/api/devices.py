@@ -20,7 +20,9 @@ async def get_device_history(device_id: str):
     try:
         with get_db_cursor() as cursor:
             cursor.execute("""
-                SELECT id as task_id, dest_id, dest_name, status, DATE_FORMAT(start_time, '%%H:%%i') as time, 
+                SELECT id as task_id, dest_id, dest_name, status, 
+                       CONCAT(DATE_FORMAT(start_time, '%%H:%%i'), 
+                              IF(end_time IS NULL, '<br/>~ 진행중', CONCAT('<br/>~ ', DATE_FORMAT(end_time, '%%H:%%i')))) as time,
                        TIMESTAMPDIFF(MINUTE, start_time, COALESCE(end_time, %s)) as duration
                 FROM tasks_log 
                 WHERE device_id = %s AND work_date = %s 
@@ -110,4 +112,34 @@ async def reset_device_penalty_post(data: dict):
         return {"status": "ok", "message": f"Penalty and failure count reset successfully for device {device_id}"}
     except Exception as e:
         print(f"Admin API Reset Penalty Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/v1/admin/device/reset_all_penalties")
+async def reset_all_device_penalties_get():
+    try:
+        with get_db_cursor() as cursor:
+            # 1. Reset penalty block time for all devices
+            cursor.execute("UPDATE devices SET penalty_until = NULL")
+            # 2. Reset today's failure stats for all devices
+            kst_date = get_kst_now().date()
+            cursor.execute("UPDATE device_daily_stats SET fail_cnt = 0 WHERE work_date = %s", (kst_date,))
+            print("[Admin API] Manually reset penalty and failures for ALL devices (GET)")
+        return {"status": "ok", "message": "All penalties and failure counts reset successfully"}
+    except Exception as e:
+        print(f"Admin API Reset All Penalties Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/v1/admin/device/reset_all_penalties")
+async def reset_all_device_penalties_post():
+    try:
+        with get_db_cursor() as cursor:
+            # 1. Reset penalty block time for all devices
+            cursor.execute("UPDATE devices SET penalty_until = NULL")
+            # 2. Reset today's failure stats for all devices
+            kst_date = get_kst_now().date()
+            cursor.execute("UPDATE device_daily_stats SET fail_cnt = 0 WHERE work_date = %s", (kst_date,))
+            print("[Admin API] Manually reset penalty and failures for ALL devices (POST)")
+        return {"status": "ok", "message": "All penalties and failure counts reset successfully"}
+    except Exception as e:
+        print(f"Admin API Reset All Penalties Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

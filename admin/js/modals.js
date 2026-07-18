@@ -268,7 +268,8 @@ export async function toggleDetailMute() {
 export function copyDeviceCode() {
   const code = document.getElementById("detail-device-id").value;
   if (!code) return;
-  navigator.clipboard.writeText(code).then(() => {
+
+  const showToast = () => {
     const alertDiv = document.createElement("div");
     alertDiv.style.position = "fixed";
     alertDiv.style.bottom = "20px";
@@ -284,9 +285,32 @@ export function copyDeviceCode() {
     alertDiv.innerText = `기기 ID [${code}] 복사 완료!`;
     document.body.appendChild(alertDiv);
     setTimeout(() => alertDiv.remove(), 1500);
-  }).catch(err => {
-    alert("복사 실패: " + err);
-  });
+  };
+
+  if (window.copyToClipboard) {
+    window.copyToClipboard(code);
+    showToast();
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(showToast).catch(err => {
+      alert("복사 실패: " + err);
+    });
+  } else {
+    // Fallback for non-secure HTTP context
+    const textarea = document.createElement("textarea");
+    textarea.value = code;
+    textarea.style.position = "fixed";
+    textarea.style.top = "0";
+    textarea.style.left = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+      showToast();
+    } catch (err) {
+      alert("복사 실패: " + err);
+    }
+    document.body.removeChild(textarea);
+  }
 }
 
 export async function openDestinationDetailModal(destId) {

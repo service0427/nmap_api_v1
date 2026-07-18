@@ -14,6 +14,7 @@ from api.helpers import (
     update_device_stats,
     log_allocation_failure,
     format_address,
+    get_client_ip,
     logger
 )
 from core.utils import (
@@ -41,6 +42,10 @@ def request_task(req: TaskRequest, request: Request):
     kst_now, kst_date = get_kst_now().replace(tzinfo=None), get_kst_date()
     success_limit = Config.get_dest_success_limit()
     client_ip = req.ip if req.ip and req.ip != "0.0.0.0" and req.ip != "unknown" else None
+    if not client_ip:
+        resolved_ip = get_client_ip(request)
+        if resolved_ip and resolved_ip != "unknown":
+            client_ip = resolved_ip
     WORKING_LOCK_SEC = 900 # 15 Minutes to wait for client progress report
     
     try:
@@ -359,9 +364,9 @@ def request_task(req: TaskRequest, request: Request):
                     if final_speed < 3.0:
                         final_arrival_s = max(60, int((final_dist / 1000.0) / 3.0 * 3600))
                         final_speed = 3.0
-                    elif final_speed > 80.0:
-                        final_arrival_s = int((final_dist / 1000.0) / 80.0 * 3600)
-                        final_speed = 80.0
+                    elif final_speed > 150.0:
+                        final_arrival_s = int((final_dist / 1000.0) / 150.0 * 3600)
+                        final_speed = 150.0
                     logger.info(f"[*] Exception Place Speed/Time adjustment: speed={final_speed}km/h, time={final_arrival_s}s")
                 else:
                     # Normal Places: Maintain average/configured travel time
@@ -372,9 +377,9 @@ def request_task(req: TaskRequest, request: Request):
                     if final_speed < 3.0:
                         final_arrival_s = max(60, int((final_dist / 1000.0) / 3.0 * 3600))
                         final_speed = 3.0
-                    elif final_speed > 80.0:
-                        final_arrival_s = int((final_dist / 1000.0) / 80.0 * 3600)
-                        final_speed = 80.0
+                    elif final_speed > 150.0:
+                        final_arrival_s = int((final_dist / 1000.0) / 150.0 * 3600)
+                        final_speed = 150.0
 
                 # 5. Identity Spoofing
                 spoofed_id = generate_spoofed_identity()

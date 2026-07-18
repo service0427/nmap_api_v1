@@ -49,7 +49,7 @@ def fetch_data():
                 'dest_id': code,
                 'search_keyword': '',  # API 소스는 검색어가 없으므로 빈 값 (엔진에서 places.name으로 자동 보완)
                 'target_url': f"https://m.place.naver.com/place/{code}",
-                'work_count': int(item.get('work_amount', 0)),
+                'work_count': 5,
                 'start_date': kst_today_iso,
                 'end_date': kst_today_iso
             })

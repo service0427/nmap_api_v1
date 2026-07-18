@@ -439,17 +439,31 @@ def get_db_cursor():
 # --- Device Metrics Helper ---
 def update_device_stats(cursor, device_id, success=0, fail=0, alloc_fail=0, duration=0):
     kst_now, kst_date = get_kst_now(), get_kst_date()
-    sql = """
-        INSERT INTO device_daily_stats (device_id, work_date, success_cnt, fail_cnt, alloc_fail_cnt, total_duration_sec, last_active_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE 
-            success_cnt = success_cnt + VALUES(success_cnt),
-            fail_cnt = fail_cnt + VALUES(fail_cnt),
-            alloc_fail_cnt = alloc_fail_cnt + VALUES(alloc_fail_cnt),
-            total_duration_sec = total_duration_sec + VALUES(total_duration_sec),
-            last_active_at = VALUES(last_active_at)
-    """
-    cursor.execute(sql, (device_id, kst_date, success, fail, alloc_fail, duration, kst_now))
+    if success > 0:
+        sql = """
+            INSERT INTO device_daily_stats (device_id, work_date, success_cnt, fail_cnt, alloc_fail_cnt, total_duration_sec, last_active_at)
+            VALUES (%s, %s, %s, 0, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                success_cnt = success_cnt + VALUES(success_cnt),
+                fail_cnt = 0,
+                alloc_fail_cnt = alloc_fail_cnt + VALUES(alloc_fail_cnt),
+                total_duration_sec = total_duration_sec + VALUES(total_duration_sec),
+                last_active_at = VALUES(last_active_at)
+        """
+        cursor.execute(sql, (device_id, kst_date, success, alloc_fail, duration, kst_now))
+        cursor.execute("UPDATE devices SET penalty_until = NULL WHERE device_id = %s", (device_id,))
+    else:
+        sql = """
+            INSERT INTO device_daily_stats (device_id, work_date, success_cnt, fail_cnt, alloc_fail_cnt, total_duration_sec, last_active_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE 
+                success_cnt = success_cnt + VALUES(success_cnt),
+                fail_cnt = fail_cnt + VALUES(fail_cnt),
+                alloc_fail_cnt = alloc_fail_cnt + VALUES(alloc_fail_cnt),
+                total_duration_sec = total_duration_sec + VALUES(total_duration_sec),
+                last_active_at = VALUES(last_active_at)
+        """
+        cursor.execute(sql, (device_id, kst_date, success, fail, alloc_fail, duration, kst_now))
 
 def log_allocation_failure(cursor, device_id, error_msg, ip, payload=None):
     """Logs detailed allocation failure reasons for debugging/monitoring."""
@@ -737,15 +751,66 @@ async def report_result(report: ResultReport):
     kst_now, kst_date = get_kst_now(), get_kst_date()
     try:
         with get_db_cursor() as cursor:
-            cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id FROM tasks_log WHERE id = %s", (actual_task_id,))
+            cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id, client_dist_m, client_time_s FROM tasks_log WHERE id = %s", (actual_task_id,))
             task_row = cursor.fetchone()
             if not task_row: return {"status": "REPORTED"}
             status_upper = (task_row['status'] or '').upper()
-            if status_upper in ['SUCCESS', 'FAIL'] or status_upper.startswith('FAIL'): return {"status": "REPORTED"}
             
             client_dist = int(report.drive_dist) if report.drive_dist and str(report.drive_dist).isdigit() else 0
             client_time = int(report.drive_time) if report.drive_time and str(report.drive_time).isdigit() else 0
             client_speed = float(report.calc_speed) if report.calc_speed else 0.0
+
+            if status_upper in ['SUCCESS', 'FAIL'] or status_upper.startswith('FAIL'):
+                # Even if already reported, if DB has under 50 for client metrics but incoming are >= 50, update them
+                db_dist = task_row.get('client_dist_m') or 0
+                db_time = task_row.get('client_time_s') or 0
+                if db_dist < 50 or db_time < 50:
+                    cursor.execute("""
+                        UPDATE tasks_log 
+                        SET client_dist_m = %s, client_time_s = %s, client_speed_kmh = %s, result_msg = %s 
+                        WHERE id = %s
+                    """, (client_dist, client_time, client_speed, report.message, actual_task_id))
+                    
+                # Revert FAIL_ZERO_DRIVE to SUCCESS if we now have valid metrics
+                if status_upper == 'FAIL_ZERO_DRIVE' and client_dist >= 50 and client_time >= 50:
+                    cursor.execute("UPDATE tasks_log SET status = 'SUCCESS' WHERE id = %s", (actual_task_id,))
+                    update_device_stats(cursor, report.device_id, success=1)
+                    cursor.execute("DELETE FROM fail_log WHERE log_id = %s", (actual_task_id,))
+                    cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
+                    cursor.execute("""
+                        INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) 
+                        VALUES (%s, %s, %s, %s, 1, 0, 0, %s, %s) 
+                        ON DUPLICATE KEY UPDATE 
+                            success_cnt=success_cnt+1, 
+                            fail_cnt=GREATEST(0, fail_cnt-1), 
+                            last_success_at=VALUES(last_success_at), 
+                            last_dist_m=VALUES(last_dist_m)
+                    """, (kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid'], task_row['distance_m'], kst_now))
+                    
+                    # Sync back to Legacy Server
+                    sync_legacy_task_end(actual_task_id, task_row['site_id'], report.device_id, task_row['dest_id'], 'SUCCESS', kst_now, client_dist, client_time, report.message)
+                
+                # Turn SUCCESS to FAIL_ZERO_DRIVE if metrics are under 50
+                elif status_upper == 'SUCCESS' and (client_dist < 50 or client_time < 50):
+                    new_msg = f"FAIL_ZERO_DRIVE: SUCCESS reported with dist={client_dist}, time={client_time} (original msg: {report.message})"
+                    cursor.execute("UPDATE tasks_log SET status = 'FAIL_ZERO_DRIVE', result_msg = %s WHERE id = %s", (new_msg, actual_task_id))
+                    update_device_stats(cursor, report.device_id, fail=1)
+                    cursor.execute("""
+                        INSERT INTO fail_log (log_id, device_id, dest_id, fail_status, error_msg)
+                        VALUES (%s, %s, %s, 'FAIL_ZERO_DRIVE', %s)
+                    """, (actual_task_id, report.device_id, task_row['dest_id'], new_msg))
+                    cursor.execute("""
+                        UPDATE daily_progress 
+                        SET success_cnt = GREATEST(0, success_cnt - 1),
+                            fail_cnt = fail_cnt + 1,
+                            last_fail_at = %s
+                        WHERE work_date = %s AND site_id = %s AND dest_id = %s AND sid = %s
+                    """, (kst_now, kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid']))
+                    
+                    # Sync back to Legacy Server
+                    sync_legacy_task_end(actual_task_id, task_row['site_id'], report.device_id, task_row['dest_id'], 'FAIL_ZERO_DRIVE', kst_now, client_dist, client_time, new_msg)
+                
+                return {"status": "REPORTED"}
 
             cursor.execute("UPDATE tasks_log SET status = %s, result_msg = %s, end_time = %s, client_dist_m = %s, client_time_s = %s, client_speed_kmh = %s WHERE id = %s", (report.status, report.message, kst_now, client_dist, client_time, client_speed, actual_task_id))
             
@@ -792,8 +857,24 @@ async def update_status(data: StatusUpdate):
             d_time = safe_int(data.drive_time)
             d_dist = safe_int(data.drive_dist)
             
-            cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id FROM tasks_log WHERE id = %s", (actual_task_id,))
+            cursor.execute("SELECT status, site_id, sid, dest_id, distance_m, ip, device_id, client_dist_m, client_time_s, start_lat, start_lng FROM tasks_log WHERE id = %s", (actual_task_id,))
             task_row = cursor.fetchone()
+
+            # Validation: SUCCESS must have drive_dist >= 50 and drive_time >= 50
+            if data.status == 'SUCCESS':
+                db_status = (task_row.get('status') or '').upper() if task_row else ''
+                db_dist = task_row.get('client_dist_m') or 0 if task_row else 0
+                db_time = task_row.get('client_time_s') or 0 if task_row else 0
+                
+                dist_val = d_dist if d_dist is not None else 0
+                time_val = d_time if d_time is not None else 0
+                
+                # If database already has valid metrics or is already marked SUCCESS, do not downgrade
+                if db_status == 'SUCCESS' or (db_dist >= 50 and db_time >= 50):
+                    pass
+                elif dist_val < 50 or time_val < 50:
+                    data.status = 'FAIL_ZERO_DRIVE'
+                    data.error_msg = f"FAIL_ZERO_DRIVE: SUCCESS reported with dist={dist_val}, time={time_val} (original msg: {data.error_msg or ''})"
             
             if data.device_id:
                 update_device_stats(cursor, data.device_id, duration=d_time if d_time else 0)
@@ -841,6 +922,20 @@ async def update_status(data: StatusUpdate):
                             INSERT INTO fail_log (log_id, device_id, dest_id, fail_status, requested_address, actual_address, error_msg, log_path)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         """, (actual_task_id, dev_id, task_row['dest_id'] if task_row else "Unknown", data.status, data.requested_address, data.actual_address, data.error_msg, data.log_path))
+
+                        is_error_log = False
+                        err_msg = (data.error_msg or "").upper()
+                        status_str = (data.status or "").upper()
+                        if "ERROR_LOG_DETECTED" in err_msg or "ERROR_LOG_DETECTED" in status_str:
+                            is_error_log = True
+
+                        if is_error_log and task_row and task_row.get('start_lat') and task_row.get('start_lng'):
+                            cursor.execute("""
+                                UPDATE task_position_pool 
+                                SET is_used = 0 
+                                WHERE dest_id = %s AND lat = %s AND lng = %s
+                            """, (task_row['dest_id'], task_row['start_lat'], task_row['start_lng']))
+                            logger.info(f"[*] ERROR_LOG_DETECTED: Reclaiming pool coordinate ({task_row['start_lat']}, {task_row['start_lng']}) for dest_id {task_row['dest_id']}")
 
                         if not (task_row['status'] == 'FAIL' or task_row['status'].startswith('FAIL')):
                             if data.device_id:

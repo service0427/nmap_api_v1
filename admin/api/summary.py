@@ -19,13 +19,14 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
     # 1. daily_progress 테이블 단독 집계로 속도 및 만료 유실 해결 (LUF, WJD 누락 방지)
     cursor.execute("""
         SELECT 
-            site_id,
-            SUM(IFNULL(total_target, 0)) as target,
-            SUM(success_cnt) as success,
-            SUM(fail_cnt) as fail
-        FROM daily_progress
-        WHERE work_date = %s
-        GROUP BY site_id
+            dp.site_id,
+            SUM(IF(r.status = 'on' AND r.is_deleted = 0, IFNULL(dp.total_target, 0), 0)) as target,
+            SUM(dp.success_cnt) as success,
+            SUM(dp.fail_cnt) as fail
+        FROM daily_progress dp
+        LEFT JOIN raw_slots r ON dp.site_id = r.site_id AND dp.sid = r.sid
+        WHERE dp.work_date = %s
+        GROUP BY dp.site_id
     """, (target_date,))
     rows = cursor.fetchall()
     
@@ -173,6 +174,14 @@ async def get_admin_summary(date: str = None):
             
             # 3. Devices (Detailed - counting success/fail from tasks_log directly for real-time accuracy)
             cursor.execute("""
+                SELECT device_id, COUNT(*) as count 
+                FROM tasks_log 
+                WHERE work_date = %s AND status = 'FAIL_ZERO_DRIVE'
+                GROUP BY device_id
+            """, (kst_date,))
+            zero_drive_counts = {row['device_id']: row['count'] for row in cursor.fetchall()}
+
+            cursor.execute("""
                 SELECT d.device_id, d.current_ip, d.hostname, d.hostname as memo, d.status, d.is_alert_muted,
                        d.install_place, d.install_count, d.network_type,
                        DATE_FORMAT(d.penalty_until, '%%Y-%%m-%%d %%H:%%i:%%s') as penalty_until,
@@ -181,13 +190,16 @@ async def get_admin_summary(date: str = None):
                        (SELECT result_msg FROM tasks_log WHERE device_id = d.device_id ORDER BY id DESC LIMIT 1) as last_result_msg,
                        (SELECT created_at FROM tasks_log WHERE device_id = d.device_id ORDER BY id DESC LIMIT 1) as last_task_at,
                        IFNULL(ds.success_cnt, 0) as today_success,
-                       IFNULL(ds.fail_cnt, 0) as today_fail,
+                       0 as today_err,
                        (SELECT end_time FROM tasks_log WHERE device_id = d.device_id AND status = 'SUCCESS' ORDER BY id DESC LIMIT 1) as last_success_at
                 FROM devices d
                 LEFT JOIN device_daily_stats ds ON d.device_id = ds.device_id AND ds.work_date = %s
                 ORDER BY d.hostname ASC
             """, (kst_date,))
             devices_list = cursor.fetchall()
+
+            for d in devices_list:
+                d['today_err'] = zero_drive_counts.get(d['device_id'], 0)
 
             # Pre-calculate silence levels for status warnings
             for d in devices_list:
@@ -201,20 +213,19 @@ async def get_admin_summary(date: str = None):
                 if d.get('last_result_msg') and 'IDENTITY_MISMATCH' in str(d['last_result_msg']):
                     d['has_identity_mismatch'] = True
                 
+                # Calculate silence_minutes for all devices based on last success
+                last_success = d['last_success_at']
+                if last_success:
+                    last_success_kst = last_success.replace(tzinfo=kst_now.tzinfo)
+                    diff_seconds = (kst_now - last_success_kst).total_seconds()
+                    diff_mins = int(diff_seconds // 60)
+                    d['silence_minutes'] = diff_mins
+                else:
+                    d['silence_minutes'] = 9999
+
                 if d['status'] == 'ON':
-                    # Warning triggers if last success is more than 20 minutes ago
-                    last_success = d['last_success_at']
-                    if last_success:
-                        last_success_kst = last_success.replace(tzinfo=kst_now.tzinfo)
-                        diff_seconds = (kst_now - last_success_kst).total_seconds()
-                        diff_mins = int(diff_seconds // 60)
-                        d['silence_minutes'] = diff_mins
-                        if diff_seconds > 1200: # 20 minutes threshold
-                            d['silence_level'] = 'danger'
-                    else:
-                        # Never had a successful task
+                    if d['silence_minutes'] > 30:  # 30 minutes threshold (upgraded from 20)
                         d['silence_level'] = 'danger'
-                        d['silence_minutes'] = 9999
 
             # 4. Destinations (Detailed - all slots for today including status)
             yesterday_date = query_date - timedelta(days=1)
@@ -259,16 +270,17 @@ async def get_admin_summary(date: str = None):
                 ) t
                 JOIN places p ON t.dest_id = p.dest_id
                 LEFT JOIN (
-                    SELECT site_id, dest_id, 
-                           SUM(total_target) as target,
-                           SUM(success_cnt) as success, 
-                           SUM(fail_cnt) as fail,
-                           SUM(miss_cnt) as miss,
-                           SUM(timeout_cnt) as timeout,
-                           SUM(mismatch_cnt) as mismatch
-                    FROM daily_progress
-                    WHERE work_date = %s
-                    GROUP BY site_id, dest_id
+                    SELECT dp.site_id, dp.dest_id, 
+                           SUM(IF(r.status = 'on' AND r.is_deleted = 0, dp.total_target, 0)) as target,
+                           SUM(dp.success_cnt) as success, 
+                           SUM(dp.fail_cnt) as fail,
+                           SUM(dp.miss_cnt) as miss,
+                           SUM(dp.timeout_cnt) as timeout,
+                           SUM(dp.mismatch_cnt) as mismatch
+                    FROM daily_progress dp
+                    LEFT JOIN raw_slots r ON dp.site_id = r.site_id AND dp.sid = r.sid
+                    WHERE dp.work_date = %s
+                    GROUP BY dp.site_id, dp.dest_id
                 ) dp ON t.site_id = dp.site_id AND t.dest_id = dp.dest_id
                 LEFT JOIN (
                     SELECT site_id, dest_id, 
@@ -288,16 +300,8 @@ async def get_admin_summary(date: str = None):
             for d in devices_list:
                 if d.get('is_alert_muted'):
                     continue
-                # 1) Failure count alert
-                if d['today_fail'] >= 5 and d['today_fail'] > d['today_success']:
-                    alarms.append({
-                        "type": "DEVICE", 
-                        "level": "danger", 
-                        "target": d['hostname'] or d['device_id'], 
-                        "msg": f"실패 과다 (성공 {d['today_success']}회 | 실패 {d['today_fail']}회)"
-                    })
-                # 2) Silence alert using calculated level
-                elif d['silence_level']:
+                # Silence alert using calculated level (over 30 minutes)
+                if d['silence_level']:
                     msg = "마지막 통신 없음"
                     if d['last_task_at']:
                         msg = f"{d['silence_minutes']}분 전 통신"

@@ -57,10 +57,10 @@ export function updateCriticalAlertMonitor(backendAlarms) {
     monitorBody.innerHTML = `
       <div class="alert-header-row" style="color: var(--color-primary)">
         <i data-lucide="shield-check" style="width: 18px; height: 18px;"></i>
-        <span>안전: 현재 20분 이상 장애 기기가 없습니다.</span>
+        <span>안전: 현재 30분 이상 장애 기기가 없습니다.</span>
       </div>
       <div style="font-size:0.75rem; color: var(--text-muted); margin-top: 0.15rem;">
-        전체 디바이스가 20분 이내에 활발하게 통신 중이며 정상 동작하고 있습니다.
+        전체 디바이스가 30분 이내에 활발하게 통신 중이며 정상 동작하고 있습니다.
       </div>
     `;
   }
@@ -122,12 +122,12 @@ export function updateEfficiencyBoard(devices) {
   `;
 
   let totalSuccess = 0;
-  let totalFail = 0;
+  let totalError = 0;
   devices.forEach(d => {
     totalSuccess += (d.today_success || 0);
-    totalFail += (d.today_fail || 0);
+    totalError += (d.today_err || 0);
   });
-  const totalTasks = totalSuccess + totalFail;
+  const totalTasks = totalSuccess + totalError;
   const successRate = totalTasks > 0 ? ((totalSuccess / totalTasks) * 100).toFixed(1) : '0.0';
 
   successRateEl.innerText = `${successRate}%`;
@@ -144,8 +144,7 @@ export function filterDevicesLocally() {
   
   const filtered = state.rawDevices.filter(d => {
     const isAlerting = d.status === 'ERROR' || 
-                       (d.status === 'ON' && d.silence_level === 'danger') || 
-                       ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0));
+                       (d.status === 'ON' && d.silence_level === 'danger');
     const matchesSearch = 
       (d.hostname || '').toLowerCase().includes(search) || 
       d.device_id.toLowerCase().includes(search) || 
@@ -225,7 +224,7 @@ function renderAccordionView(filteredDevices) {
     devicesInGroup.forEach(x => {
       totalQty += (x.install_count || 1);
       if (x.status === 'ON') activeCount++;
-      if (x.status === 'ERROR' || (x.today_fail || 0) >= 5) errorCount++;
+      if (x.status === 'ERROR' || (x.status === 'ON' && x.silence_level === 'danger')) errorCount++;
     });
     
     const firstPlace = devicesInGroup[0].install_place || "장소 미정";
@@ -261,8 +260,7 @@ function renderAccordionView(filteredDevices) {
     devicesInGroup.forEach(d => {
       const cardDiv = document.createElement("div");
       const isAlerting = d.status === 'ERROR' || 
-                         (d.status === 'ON' && d.silence_level === 'danger') || 
-                         ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0));
+                         (d.status === 'ON' && d.silence_level === 'danger');
       
       let statusClass = 'status-off';
       let indClass = 'inactive';
@@ -284,12 +282,6 @@ function renderAccordionView(filteredDevices) {
           borderColor = 'var(--color-warning)';
           statusLabelText = `지연 (${d.silence_minutes}분)`;
           statusBadgeClass = 'warning';
-        } else if ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0)) {
-          statusClass = 'status-error';
-          indClass = 'alert';
-          borderColor = 'var(--color-danger)';
-          statusLabelText = `실패과다 (${d.today_fail}회)`;
-          statusBadgeClass = 'danger';
         } else {
           statusClass = 'status-on';
           indClass = 'active';
@@ -307,7 +299,7 @@ function renderAccordionView(filteredDevices) {
       const diff = todaySuccess - yesterdaySuccess;
       const diffSign = diff > 0 ? '+' : '';
       const diffColor = diff > 0 ? 'var(--color-success)' : (diff < 0 ? 'var(--color-danger)' : 'var(--text-muted)');
-      const compareText = `<span style="font-size:0.65rem; color:${diffColor}; font-weight:800; margin-left:0.15rem;">(${diffSign}${diff})</span>`;
+      const compareText = `<span style="font-size:0.575rem; color:${diffColor}; font-weight:800; margin-left:0.05rem; display:inline-block; vertical-align:middle; line-height:1;">(${diffSign}${diff})</span>`;
 
       const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
       const isPenalized = d.penalty_until && new Date(d.penalty_until.replace(' ', 'T')) > kstNow;
@@ -341,28 +333,60 @@ function renderAccordionView(filteredDevices) {
           </div>
         `;
       }
-      
+      let successAgoText = "성공 없음";
+      let successAgoStyle = "color: var(--text-muted); font-weight: 500;";
+      if (d.silence_minutes !== undefined && d.silence_minutes !== null) {
+        const silenceMins = d.silence_minutes;
+        if (silenceMins === 9999) {
+          successAgoText = "성공 없음";
+          successAgoStyle = "color: var(--color-danger); font-weight: 700;";
+        } else if (silenceMins >= 1440) {
+          const days = Math.floor(silenceMins / 1440);
+          successAgoText = `${days}일 전`;
+          successAgoStyle = "color: var(--color-danger); font-weight: 800;";
+        } else if (silenceMins >= 60) {
+          const hrs = Math.floor(silenceMins / 60);
+          successAgoText = `${hrs}시간 전`;
+          successAgoStyle = "color: var(--color-danger); font-weight: 800;";
+        } else if (silenceMins > 30) {
+          successAgoText = `${silenceMins}분 전`;
+          successAgoStyle = "color: var(--color-danger); font-weight: 800;";
+        } else if (silenceMins === 0) {
+          successAgoText = "방금 성공";
+          successAgoStyle = "color: var(--color-success); font-weight: 700;";
+        } else {
+          successAgoText = `${silenceMins}분 전`;
+          successAgoStyle = "color: var(--text-muted); font-weight: 500;";
+        }
+      }
+
       cardDiv.innerHTML = `
-        <div class="device-card-header" style="margin-bottom:0.15rem;">
-          <div style="display: flex; align-items: center; gap: 0.25rem; min-width: 0; flex: 1;">
-            <span class="device-name" style="font-size:0.775rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width: 90px;" title="기기이름: ${d.hostname || '미정'}&#10;디바이스 ID: ${d.device_id}">${d.device_id}</span>
-            <button class="badge secondary" style="cursor:pointer; padding: 0.05rem 0.2rem; font-size: 0.55rem; line-height: 1; flex-shrink: 0;" onclick="event.stopPropagation(); window.copyToClipboard('${d.device_id}', this)" title="ID 복사">복사</button>
-            ${d.has_identity_mismatch ? `<span class="badge danger" style="font-size:0.55rem; padding: 0.05rem 0.15rem; font-weight:800; flex-shrink:0; cursor:pointer;" title="신원 정보 불일치 오류 감지 (SSAID/ADID/TOKEN 확인 요망)">⚠️ 신원오류</span>` : ''}
+        <div class="device-card-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem; width: 100%;">
+          <div style="display: flex; align-items: center; gap: 0.35rem; min-width: 0;">
+            <span class="device-name" style="font-size: 0.825rem; font-weight: 800; font-family: monospace; letter-spacing: -0.3px; color: var(--text-main);" title="기기이름: ${d.hostname || '미정'}&#10;디바이스 ID: ${d.device_id}">
+              ${d.device_id}
+            </span>
+            <button class="badge secondary" style="cursor: pointer; padding: 0.05rem 0.2rem; font-size: 0.55rem; line-height: 1; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.08);" onclick="event.stopPropagation(); window.copyToClipboard('${d.device_id}', this)" title="ID 복사">복사</button>
           </div>
-          <span class="badge ${statusBadgeClass}" style="font-size:0.6rem; padding:0.05rem 0.15rem; flex-shrink: 0; margin-left: 0.25rem;">
-            <span class="status-indicator ${indClass}"></span> ${statusLabelText}
-          </span>
+          <span style="font-size: 0.65rem; ${successAgoStyle} white-space: nowrap;" title="마지막 성공 시간: ${d.last_success_at || '기록 없음'}">${successAgoText}</span>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div style="display:flex; gap:0.2rem;">
-            <span class="badge success" style="font-size:0.6rem; padding:0.05rem 0.15rem; font-weight:700;">
-              S: ${todaySuccess} ${compareText}
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.25rem; margin-top: 0.15rem; padding-top: 0.25rem; border-top: 1px solid rgba(255, 255, 255, 0.03); width: 100%;">
+          <div style="display: flex; align-items: center; gap: 0.25rem; min-width: 0;">
+            <span class="badge ${statusBadgeClass}" style="font-size: 0.65rem; padding: 0.1rem 0.3rem; display: inline-flex; align-items: center; gap: 0.25rem; font-weight: 700; white-space: nowrap;">
+              <span class="status-indicator ${indClass}"></span> ${statusLabelText}
             </span>
-            <span class="badge ${d.today_fail > 0 ? 'danger' : 'secondary'}" style="font-size:0.6rem; padding:0.05rem 0.15rem; font-weight:700;">
-              F: ${d.today_fail || 0}
+            ${d.has_identity_mismatch ? `<span class="badge danger" style="font-size:0.55rem; padding: 0.1rem 0.2rem; font-weight:800; flex-shrink:0; cursor:pointer;" onclick="event.stopPropagation(); window.openDeviceDetailModal('${d.device_id}')" title="신원 정보 불일치 오류 감지 (SSAID/ADID/TOKEN 확인 요망)">⚠️ 신원오류</span>` : ''}
+          </div>
+          <div style="display: flex; gap: 0.25rem; flex-shrink: 0;">
+            <span class="badge success" style="font-size: 0.625rem; padding: 0.05rem 0.2rem; font-weight: 700; display: inline-flex; align-items: center; gap: 0.05rem; line-height: 1;">
+              <span style="display:inline-block; vertical-align:middle; line-height:1;">S: ${todaySuccess}</span>
+              ${compareText}
+            </span>
+            <span class="badge ${d.today_err > 0 ? 'danger' : 'secondary'}" style="font-size: 0.625rem; padding: 0.05rem 0.2rem; font-weight: 700; display: inline-flex; align-items: center; line-height: 1;">
+              <span style="display:inline-block; vertical-align:middle; line-height:1;">Zero: ${d.today_err || 0}</span>
             </span>
           </div>
-          <span style="font-size:0.65rem; color:var(--text-muted); font-weight:500;">통신 ${lastActiveFormatted}</span>
         </div>
         ${penaltyHtml}
       `;
@@ -396,7 +420,7 @@ function renderCompactView(filteredDevices) {
   `;
 
   filteredDevices.forEach(d => {
-    const isAlerting = d.status === 'ERROR' || (d.today_fail || 0) >= 5;
+    const isAlerting = d.status === 'ERROR' || (d.status === 'ON' && d.silence_level === 'danger');
     const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
     const isPenalized = d.penalty_until && new Date(d.penalty_until.replace(' ', 'T')) > kstNow;
     
@@ -442,7 +466,7 @@ function renderCompactView(filteredDevices) {
       borderColor = 'var(--color-danger)';
     }
 
-    const tooltip = `기기: ${d.hostname || '미정'} (${d.device_id})&#10;IP: ${d.current_ip || '--'}&#10;상태: ${d.status || 'OFF'}&#10;오늘성공: ${d.today_success || 0}건 (${diffText})&#10;오늘실패: ${d.today_fail || 0}건&#10;최근통신: ${lastTime}&#10;설치처: ${d.install_place || '미정'}` + 
+    const tooltip = `기기: ${d.hostname || '미정'} (${d.device_id})&#10;IP: ${d.current_ip || '--'}&#10;상태: ${d.status || 'OFF'}&#10;오늘성공: ${d.today_success || 0}건 (${diffText})&#10;제로주행: ${d.today_err || 0}건&#10;최근통신: ${lastTime}` + 
       (d.has_identity_mismatch ? '\u000A⚠️ 신원오류 감지: SSAID/ADID/TOKEN 불일치' : '') +
       (isPenalized ? `\u000A⚠️ 페널티 차단 상태 (만료: ${d.penalty_until})` : '');
 
@@ -454,9 +478,10 @@ function renderCompactView(filteredDevices) {
            onmouseover="this.style.borderColor='var(--color-primary)'; this.style.transform='translateY(-1px)';"
            onmouseout="this.style.borderColor='${borderColor}'; this.style.transform='none';">
         <span style="font-weight:700; width:100%; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${shortName}${d.has_identity_mismatch ? ' ⚠️' : ''}</span>
-        <div style="display:flex; align-items:center; gap:0.15rem; font-size:0.55rem; color:var(--text-muted); font-weight:600; margin-top:0.1rem;">
+        <div style="display:flex; align-items:center; justify-content:center; gap:0.25rem; font-size:0.55rem; font-weight:600; margin-top:0.1rem; width:100%;">
           <span style="width: 5px; height: 5px; border-radius: 50%; background-color: ${statusDotColor}; display:inline-block;"></span>
-          <span>S:${d.today_success || 0}</span>
+          <span style="color:var(--color-primary);">S:${d.today_success || 0}</span>
+          <span style="color:${d.today_err > 0 ? 'var(--color-danger)' : 'var(--text-muted)'}">Zero:${d.today_err || 0}</span>
         </div>
       </div>
     `;
@@ -512,8 +537,7 @@ function renderTableView(filteredDevices) {
       { field: 'status', headerName: '상태', width: 110, cellRenderer: params => {
           const d = params.data;
           const isAlerting = d.status === 'ERROR' || 
-                             (d.status === 'ON' && d.silence_level === 'danger') || 
-                             ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0));
+                             (d.status === 'ON' && d.silence_level === 'danger');
           let badgeClass = 'secondary';
           let statusText = d.status || 'OFF';
           
@@ -524,9 +548,6 @@ function renderTableView(filteredDevices) {
             } else if (d.silence_level === 'warning') {
               badgeClass = 'warning';
               statusText = `지연 (${d.silence_minutes}m)`;
-            } else if ((d.today_fail || 0) >= 5 && (d.today_fail || 0) > (d.today_success || 0)) {
-              badgeClass = 'danger';
-              statusText = `실패과다 (${d.today_fail}f)`;
             } else {
               badgeClass = 'success';
               statusText = 'ON';
@@ -572,10 +593,10 @@ function renderTableView(filteredDevices) {
           return `<span>${today}</span>${diffHtml}`;
         }
       },
-      { field: 'today_fail', headerName: '오늘 실패', sortable: true, width: 85, cellRenderer: params => {
-          const fail = params.data.today_fail || 0;
-          const color = fail > 0 ? 'var(--color-danger)' : 'inherit';
-          return `<span style="color:${color}; font-weight:${fail > 0 ? '700' : 'normal'}">${fail}</span>`;
+      { field: 'today_err', headerName: '제로 주행', sortable: true, width: 85, cellRenderer: params => {
+          const err = params.data.today_err || 0;
+          const color = err > 0 ? 'var(--color-danger)' : 'inherit';
+          return `<span style="color:${color}; font-weight:${err > 0 ? '700' : 'normal'}">${err}</span>`;
         }
       },
       { headerName: '최근 7일 추이', width: 125, cellRenderer: params => {

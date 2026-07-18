@@ -263,10 +263,10 @@
       <div class="critical-alert-box alert-safe" id="devices-alert-monitor">
         <div class="alert-header-row" style="color: var(--color-primary)">
           <i data-lucide="shield-check" style="width: 18px; height: 18px;"></i>
-          <span>실시간 장애 모니터링 (20분 이상 무응답)</span>
+          <span>실시간 장애 모니터링 (30분 이상 무응답)</span>
         </div>
         <div style="font-size:0.8rem; color: var(--text-muted); margin-top: 0.25rem;" id="devices-alert-body">
-          현재 20분 이상 무응답인 장비가 없습니다. 전체 시스템이 원활하게 동작하고 있습니다.
+          현재 30분 이상 무응답인 장비가 없습니다. 전체 시스템이 원활하게 동작하고 있습니다.
         </div>
       </div>
 
@@ -314,6 +314,11 @@
               <option value="off">미작동 (OFF)</option>
               <option value="error">장애 감지 (ERROR/무응답)</option>
             </select>
+            
+            <button class="btn primary" id="btn-reset-all-penalties" onclick="window.resetAllPenalties()" style="height: 38px; display: flex; align-items: center; gap: 0.25rem; background-color: var(--color-danger); border-color: var(--color-danger); font-size: 0.775rem;" title="전체 기기의 패널티 차단 및 실패 횟수를 일괄 해제합니다.">
+              <i data-lucide="unlock" style="width: 14px; height: 14px;"></i>
+              <span>일괄 차단 해제</span>
+            </button>
             
             <!-- View Mode Switcher buttons -->
             <div style="display:flex; gap:0.25rem; background: rgba(255,255,255,0.03); padding: 0.2rem; border-radius: 6px; border: 1px solid var(--border-color);">
