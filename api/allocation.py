@@ -109,6 +109,8 @@ def request_task(req: TaskRequest, request: Request):
                       AND r.status = 'on'
                       AND r.is_deleted = 0
                       AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
+                      AND p.name NOT LIKE 'DELETED_%%'
+                      AND p.name NOT LIKE 'INVALID_ADDR_%%'
                       AND (
                           SELECT IFNULL(SUM(success_cnt), 0) 
                           FROM daily_progress 
@@ -235,6 +237,8 @@ def request_task(req: TaskRequest, request: Request):
                           AND r.status = 'on'
                           AND r.is_deleted = 0
                           AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
+                          AND p.name NOT LIKE 'DELETED_%%'
+                          AND p.name NOT LIKE 'INVALID_ADDR_%%'
                           AND (
                               SELECT IFNULL(SUM(success_cnt), 0) 
                               FROM daily_progress 

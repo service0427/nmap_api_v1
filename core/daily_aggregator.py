@@ -64,7 +64,10 @@ def aggregate_daily_quota():
                                 dist_min_m = 3000,
                                 dist_max_m = 15000,
                                 check_status = 'NORMAL'
-                            WHERE is_optimizer = 1 OR check_status = 'FAIL'
+                            WHERE (is_optimizer = 1 OR check_status = 'FAIL')
+                              AND name NOT LIKE 'DELETED_%%'
+                              AND name NOT LIKE 'INVALID_ADDR_%%'
+                              AND name NOT LIKE 'FAILED_SCRAPE_%%'
                         """)
                         print(f"    Reset {cursor.rowcount} places optimizer status and restored 3km~15km distances for the new day.")
                     except Exception as ex_reset:

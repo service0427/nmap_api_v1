@@ -24,6 +24,8 @@ def request_task_get(site_id: Optional[str] = None):
                 WHERE r.status = 'on'
                   AND r.is_deleted = 0
                   AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
+                  AND p.name NOT LIKE 'DELETED_%%'
+                  AND p.name NOT LIKE 'INVALID_ADDR_%%'
                   AND p.lat IS NOT NULL AND p.lng IS NOT NULL AND p.lat != 0.0 AND p.lng != 0.0
                   AND p.check_status IN ('VERIFIED', 'NORMAL')
                   AND %s BETWEEN r.start_date AND r.end_date
@@ -51,6 +53,8 @@ def request_task_get(site_id: Optional[str] = None):
                     WHERE r.status = 'on'
                       AND r.is_deleted = 0
                       AND p.name NOT LIKE 'FAILED_SCRAPE_%%'
+                      AND p.name NOT LIKE 'DELETED_%%'
+                      AND p.name NOT LIKE 'INVALID_ADDR_%%'
                       AND p.lat IS NOT NULL AND p.lng IS NOT NULL AND p.lat != 0.0 AND p.lng != 0.0
                       AND p.check_status IN ('VERIFIED', 'NORMAL')
                 """
@@ -72,6 +76,8 @@ def request_task_get(site_id: Optional[str] = None):
                         p.dest_id, p.name, p.address, p.original_address, p.lat, p.lng
                     FROM places p
                     WHERE p.name NOT LIKE 'FAILED_SCRAPE_%%'
+                      AND p.name NOT LIKE 'DELETED_%%'
+                      AND p.name NOT LIKE 'INVALID_ADDR_%%'
                       AND p.lat IS NOT NULL AND p.lng IS NOT NULL AND p.lat != 0.0 AND p.lng != 0.0
                       AND p.check_status IN ('VERIFIED', 'NORMAL')
                     ORDER BY RAND()
