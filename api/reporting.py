@@ -49,6 +49,9 @@ def report_result(report: ResultReport, request: Request):
     if not actual_task_id:
         return {"status": "REPORTED"}
         
+    if report.status == 'FAIL' and report.message == 'INTERRUPTED_BY_NEW_TASK':
+        report.status = 'CANCELED'
+
     kst_now, kst_date = get_kst_now().replace(tzinfo=None), get_kst_date()
     try:
         with get_db_cursor() as cursor:
@@ -132,7 +135,8 @@ def report_result(report: ResultReport, request: Request):
                     update_device_stats(cursor, report.device_id, success=1)
                     cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
                     cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) VALUES (%s, %s, %s, %s, 1, 0, 0, %s, %s) ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), miss_cnt=0, last_dist_m=VALUES(last_dist_m)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid'], task_row['distance_m'], kst_now))
-
+            elif report.status == 'CANCELED':
+                pass
             else:
                 # Log to fail_log
                 cursor.execute("""
@@ -261,7 +265,7 @@ def update_status(data: StatusUpdate, request: Request):
             # 1. Terminal State Protection: If the task is already finished, do not allow update_status to overwrite it
             if task_row:
                 db_status = (task_row.get('status') or '').upper()
-                if db_status in ['SUCCESS', 'FAIL', 'FAIL_ZERO_DRIVE'] or db_status.startswith('FAIL'):
+                if db_status in ['SUCCESS', 'FAIL', 'FAIL_ZERO_DRIVE', 'CANCELED'] or db_status.startswith('FAIL'):
                     return {"status": "REPORTED"}
 
             # Validation: SUCCESS must have drive_dist >= 50 and drive_time >= 50
