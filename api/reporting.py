@@ -293,6 +293,28 @@ def update_status(data: StatusUpdate, request: Request):
                 if task_row.get('ip') != data.real_ip:
                     cursor.execute("INSERT INTO ip_allocation_history (ip, dest_id, allocated_at) VALUES (%s, %s, %s)", (data.real_ip, task_row['dest_id'], kst_now))
                 
+            status_is_fail = data.status == 'FAIL' or data.status.startswith('FAIL')
+            db_status_is_fail = task_row and (task_row.get('status') == 'FAIL' or (task_row.get('status') or '').startswith('FAIL'))
+            if status_is_fail and not db_status_is_fail:
+                if resolved_device_id:
+                    update_device_stats(cursor, resolved_device_id, fail=1)
+                    cursor.execute("SELECT fail_cnt FROM device_daily_stats WHERE device_id = %s AND work_date = %s", (resolved_device_id, kst_date))
+                    stat_row = cursor.fetchone()
+                    if stat_row and stat_row.get('fail_cnt', 0) >= 60:
+                        penalty_release = kst_now + timedelta(minutes=10)
+                        cursor.execute("UPDATE devices SET penalty_until = %s WHERE device_id = %s", (penalty_release, resolved_device_id))
+                if task_row:
+                    cursor.execute("""
+                        INSERT INTO daily_progress (
+                            work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, 
+                            last_dist_m, last_fail_at
+                        ) 
+                        VALUES (%s, %s, %s, %s, 0, 1, 0, %s, %s) 
+                        ON DUPLICATE KEY UPDATE 
+                            fail_cnt = fail_cnt + 1, 
+                            last_fail_at = VALUES(last_fail_at)
+                    """, (kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid'], task_row['distance_m'], kst_now))
+
             update_parts, params = ["status = %s"], [data.status]
             if data.status in ['SUCCESS', 'FAIL'] or data.status.startswith('FAIL'): 
                 update_parts.append("end_time = %s")
