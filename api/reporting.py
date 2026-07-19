@@ -282,10 +282,11 @@ def update_status(data: StatusUpdate, request: Request):
                         data.status = 'FAIL_ZERO_DRIVE'
                         data.error_msg = f"FAIL_ZERO_DRIVE: SUCCESS reported with dist={d_dist}, time={d_time} (original msg: {data.error_msg or ''})"
             
-            if data.device_id:
-                update_device_stats(cursor, data.device_id, duration=d_time if d_time else 0)
+            resolved_device_id = data.device_id or (task_row['device_id'] if task_row else None)
+            if resolved_device_id:
+                update_device_stats(cursor, resolved_device_id, duration=d_time if d_time else 0)
                 if data.real_ip: 
-                    update_device_ip(cursor, data.device_id, data.real_ip, kst_now)
+                    update_device_ip(cursor, resolved_device_id, data.real_ip, kst_now)
 
             # Record IP allocation for exclusivity check once we know the device's actual public IP
             if data.real_ip and data.real_ip != "Unknown" and task_row:

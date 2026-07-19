@@ -52,6 +52,9 @@ def request_task(req: TaskRequest, request: Request):
         with allocation_lock:
             with get_db_cursor() as cursor:
                 update_device_stats(cursor, req.device_id)
+                device_reported_ip = req.ip if req.ip and req.ip != "0.0.0.0" and req.ip != "unknown" else None
+                if device_reported_ip:
+                    helpers.update_device_ip(cursor, req.device_id, device_reported_ip, kst_now)
                 
                 # 1. Device Verification
                 cursor.execute("SELECT seq, device_id, status, orig_ssaid, orig_adid, orig_idfv, orig_ni, orig_token, last_allocated_at, penalty_until FROM devices WHERE device_id = %s AND status = 'on'", (req.device_id,))
