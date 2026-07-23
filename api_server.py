@@ -538,10 +538,10 @@ async def request_task(req: TaskRequest):
                 cursor.execute("SELECT dest_id FROM tasks_log WHERE end_time IS NULL AND created_at > %s - INTERVAL %s SECOND", (kst_now, WORKING_LOCK_SEC))
                 locked_dest_ids = {str(row['dest_id']) for row in cursor.fetchall()}
 
-                # IP Exclusivity: Same IP cannot take same dest_id within the last 3 hours
+                # IP Exclusivity: Same IP cannot take same dest_id within the last 20 minutes
                 if client_ip:
-                    three_hours_ago = kst_now - timedelta(hours=3)
-                    cursor.execute("SELECT dest_id FROM ip_allocation_history WHERE ip = %s AND allocated_at >= %s", (client_ip, three_hours_ago))
+                    twenty_mins_ago = kst_now - timedelta(minutes=20)
+                    cursor.execute("SELECT dest_id FROM ip_allocation_history WHERE ip = %s AND allocated_at >= %s", (client_ip, twenty_mins_ago))
                     ip_allocated_ids = {str(row['dest_id']) for row in cursor.fetchall()}
                 else:
                     ip_allocated_ids = set()
