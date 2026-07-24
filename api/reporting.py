@@ -37,6 +37,7 @@ class ResultReport(BaseModel):
     drive_time: Optional[Any] = None
     calc_speed: Optional[Any] = None
     client_info: Optional[ClientInfo] = None
+    has_429: Optional[bool] = False
 
 class StatusUpdate(BaseModel):
     task_id: Optional[Union[int, str]] = None
@@ -52,6 +53,7 @@ class StatusUpdate(BaseModel):
     error_msg: Optional[str] = None
     log_path: Optional[str] = None
     client_info: Optional[ClientInfo] = None
+    has_429: Optional[bool] = False
 
 @router.post("/api/v1/report_result")
 def report_result(report: ResultReport, request: Request):
@@ -140,7 +142,11 @@ def report_result(report: ResultReport, request: Request):
             is_excess = orig_msg.startswith("[EXCESS_ALLOCATION]")
             final_report_msg = f"[EXCESS_ALLOCATION] {report.message or ''}" if is_excess else report.message
 
-            cursor.execute("UPDATE tasks_log SET status = %s, result_msg = %s, end_time = %s, client_dist_m = %s, client_time_s = %s, client_speed_kmh = %s WHERE id = %s", (report.status, final_report_msg, kst_now, client_dist, client_time, client_speed, actual_task_id))
+            val_has_429 = 1 if report.has_429 else 0
+            if report.has_429:
+                logger.warning(f"[*] HTTP 429 Detected for task {actual_task_id} (Device: {report.device_id}, IP: {task_row.get('ip') if task_row else 'unknown'})")
+
+            cursor.execute("UPDATE tasks_log SET status = %s, result_msg = %s, end_time = %s, client_dist_m = %s, client_time_s = %s, client_speed_kmh = %s, has_429 = GREATEST(IFNULL(has_429, 0), %s) WHERE id = %s", (report.status, final_report_msg, kst_now, client_dist, client_time, client_speed, val_has_429, actual_task_id))
             
             if report.status == 'SUCCESS':
                 if task_row['status'] != 'SUCCESS':
@@ -369,6 +375,10 @@ def update_status(data: StatusUpdate, request: Request):
                 update_parts.append("duration_sec = %s")
                 params.append(d_time)
                 
+            if data.has_429:
+                update_parts.append("has_429 = 1")
+                logger.warning(f"[*] HTTP 429 Detected in update_status for task {actual_task_id} (Device: {resolved_device_id})")
+
             status_str = data.status
             if data.actual_address or data.error_msg:
                 status_str = f"{data.status} | Req:{data.requested_address} | Act:{data.actual_address} | Msg:{data.error_msg}"
