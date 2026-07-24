@@ -188,12 +188,7 @@ def report_result(report: ResultReport, request: Request):
 
                 # Re-allocation Strategy per Failure Category
                 if report.has_429 or "CAPTCHA_TRIGGERED" in err_msg or "CAPTCHA_TRIGGERED" in status_str:
-                    if rep_lte_ip:
-                        cursor.execute("""
-                            INSERT INTO lte_ip_allocation_history (lte_ip, dest_id, device_id, hostname, has_429, allocated_at)
-                            VALUES (%s, %s, %s, %s, 1, %s)
-                        """, (rep_lte_ip, task_row['dest_id'], report.device_id, rep_c_info.hostname[:20] if rep_c_info and rep_c_info.hostname else None, kst_now))
-                    logger.warning(f"[*] IP Block (429/Captcha) for task {actual_task_id}: LTE IP {rep_lte_ip} locked for 20 mins.")
+                    logger.warning(f"[*] IP Block (429/Captcha) for task {actual_task_id}: LTE IP {rep_lte_ip} logged in tasks_log.")
                 elif any(m in err_msg for m in ('NETWORK_TIMEOUT', 'FRIDA_CRASH', 'NMAP_CRASH', 'APP CLOSED', 'TIMEOUT_15M', 'IDENTITY_LEAK_DETECTED')):
                     if rep_lte_ip:
                         cursor.execute("""
