@@ -26,12 +26,23 @@ from core.utils import (
 
 router = APIRouter(tags=["Allocation"])
 
+class ClientInfo(BaseModel):
+    hostname: Optional[str] = None
+    tailscale_ip: Optional[str] = None
+    local_ip: Optional[str] = None
+    public_ip: Optional[str] = None
+    network_type: Optional[str] = None
+    nmap_version: Optional[str] = None
+    client_version: Optional[str] = None
+    usb_slot: Optional[str] = None
+
 class TaskRequest(BaseModel):
     device_id: str
     ip: Optional[str] = "0.0.0.0"
     site_id: Optional[str] = None
     arrival_time: Optional[Union[int, str]] = None
     only_optimizer: Optional[bool] = False
+    client_info: Optional[ClientInfo] = None
 
 @router.post("/api/v1/request_task")
 def request_task(req: TaskRequest, request: Request):
@@ -55,6 +66,34 @@ def request_task(req: TaskRequest, request: Request):
                 device_reported_ip = req.ip if req.ip and req.ip != "0.0.0.0" and req.ip != "unknown" else None
                 if device_reported_ip:
                     helpers.update_device_ip(cursor, req.device_id, device_reported_ip, kst_now)
+                
+                c_info = req.client_info
+                if c_info:
+                    dev_updates, dev_params = [], []
+                    if c_info.hostname:
+                        dev_updates.append("hostname = %s")
+                        dev_params.append(c_info.hostname[:20])
+                    if c_info.tailscale_ip:
+                        dev_updates.append("tailscale_ip = %s")
+                        dev_params.append(c_info.tailscale_ip[:45])
+                    if c_info.local_ip:
+                        dev_updates.append("local_ip = %s")
+                        dev_params.append(c_info.local_ip[:45])
+                    if c_info.network_type:
+                        dev_updates.append("network_type = %s")
+                        dev_params.append(c_info.network_type[:20])
+                    if c_info.nmap_version:
+                        dev_updates.append("nmap_version = %s")
+                        dev_params.append(c_info.nmap_version[:20])
+                    if c_info.client_version:
+                        dev_updates.append("client_version = %s")
+                        dev_params.append(c_info.client_version[:20])
+                    if c_info.usb_slot:
+                        dev_updates.append("usb_slot = %s")
+                        dev_params.append(c_info.usb_slot[:20])
+                    if dev_updates:
+                        dev_params.append(req.device_id)
+                        cursor.execute(f"UPDATE devices SET {', '.join(dev_updates)} WHERE device_id = %s", tuple(dev_params))
                 
                 # 1. Device Verification
                 cursor.execute("SELECT seq, device_id, status, orig_ssaid, orig_adid, orig_idfv, orig_ni, orig_token, last_allocated_at, penalty_until FROM devices WHERE device_id = %s AND status = 'on'", (req.device_id,))
@@ -405,13 +444,18 @@ def request_task(req: TaskRequest, request: Request):
                     INSERT INTO tasks_log (
                         work_date, site_id, sid, dest_id, dest_name, device_id, ip, spoofed_identity, 
                         status, result_msg, start_time, distance_m, start_lat, start_lng, checked_rank, 
-                        speed_kmh, created_at
+                        speed_kmh, created_at, hostname, tailscale_ip, nmap_version, client_version, usb_slot
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WORKING', %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WORKING', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     kst_date, task['site_id'], task_sid, task['dest_id'], task['name'], req.device_id, client_ip, json.dumps(spoofed_id), 
                     msg_str, kst_now, int(final_dist), final_lat, final_lng, checked_rank, 
-                    final_speed, kst_now
+                    final_speed, kst_now,
+                    c_info.hostname[:20] if c_info and c_info.hostname else None,
+                    c_info.tailscale_ip[:45] if c_info and c_info.tailscale_ip else None,
+                    c_info.nmap_version[:20] if c_info and c_info.nmap_version else None,
+                    c_info.client_version[:20] if c_info and c_info.client_version else None,
+                    c_info.usb_slot[:20] if c_info and c_info.usb_slot else None
                 ))
                 
                 v1_task_id = cursor.connection.insert_id()

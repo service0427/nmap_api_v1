@@ -14,6 +14,16 @@ from core.utils import get_kst_now, get_kst_date
 
 router = APIRouter(tags=["Reporting"])
 
+class ClientInfo(BaseModel):
+    hostname: Optional[str] = None
+    tailscale_ip: Optional[str] = None
+    local_ip: Optional[str] = None
+    public_ip: Optional[str] = None
+    network_type: Optional[str] = None
+    nmap_version: Optional[str] = None
+    client_version: Optional[str] = None
+    usb_slot: Optional[str] = None
+
 class ResultReport(BaseModel):
     task_id: Optional[Union[int, str]] = None
     log_id: Optional[Union[int, str]] = None
@@ -26,6 +36,7 @@ class ResultReport(BaseModel):
     drive_dist: Optional[Any] = None
     drive_time: Optional[Any] = None
     calc_speed: Optional[Any] = None
+    client_info: Optional[ClientInfo] = None
 
 class StatusUpdate(BaseModel):
     task_id: Optional[Union[int, str]] = None
@@ -40,6 +51,7 @@ class StatusUpdate(BaseModel):
     requested_address: Optional[str] = None
     error_msg: Optional[str] = None
     log_path: Optional[str] = None
+    client_info: Optional[ClientInfo] = None
 
 @router.post("/api/v1/report_result")
 def report_result(report: ResultReport, request: Request):
@@ -287,6 +299,34 @@ def update_status(data: StatusUpdate, request: Request):
                 update_device_stats(cursor, resolved_device_id, duration=d_time if d_time else 0)
                 if data.real_ip: 
                     update_device_ip(cursor, resolved_device_id, data.real_ip, kst_now)
+
+                c_info = data.client_info
+                if c_info:
+                    dev_updates, dev_params = [], []
+                    if c_info.hostname:
+                        dev_updates.append("hostname = %s")
+                        dev_params.append(c_info.hostname[:20])
+                    if c_info.tailscale_ip:
+                        dev_updates.append("tailscale_ip = %s")
+                        dev_params.append(c_info.tailscale_ip[:45])
+                    if c_info.local_ip:
+                        dev_updates.append("local_ip = %s")
+                        dev_params.append(c_info.local_ip[:45])
+                    if c_info.network_type:
+                        dev_updates.append("network_type = %s")
+                        dev_params.append(c_info.network_type[:20])
+                    if c_info.nmap_version:
+                        dev_updates.append("nmap_version = %s")
+                        dev_params.append(c_info.nmap_version[:20])
+                    if c_info.client_version:
+                        dev_updates.append("client_version = %s")
+                        dev_params.append(c_info.client_version[:20])
+                    if c_info.usb_slot:
+                        dev_updates.append("usb_slot = %s")
+                        dev_params.append(c_info.usb_slot[:20])
+                    if dev_updates:
+                        dev_params.append(resolved_device_id)
+                        cursor.execute(f"UPDATE devices SET {', '.join(dev_updates)} WHERE device_id = %s", tuple(dev_params))
 
             # Record IP allocation for exclusivity check once we know the device's actual public IP
             if data.real_ip and data.real_ip != "Unknown" and task_row:
