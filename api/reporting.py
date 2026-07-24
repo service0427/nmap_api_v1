@@ -176,6 +176,29 @@ def report_result(report: ResultReport, request: Request):
                 is_error_log = False
                 err_msg = (report.message or "").upper()
                 status_str = (report.status or "").upper()
+                
+                rep_c_info = report.client_info
+                rep_lte_ip = rep_c_info.lte_public_ip if rep_c_info and rep_c_info.lte_public_ip else None
+
+                # Re-allocation Strategy per Failure Category
+                if report.has_429 or "CAPTCHA_TRIGGERED" in err_msg or "CAPTCHA_TRIGGERED" in status_str:
+                    if rep_lte_ip:
+                        cursor.execute("""
+                            INSERT INTO lte_ip_allocation_history (lte_ip, dest_id, device_id, hostname, has_429, allocated_at)
+                            VALUES (%s, %s, %s, %s, 1, %s)
+                        """, (rep_lte_ip, task_row['dest_id'], report.device_id, rep_c_info.hostname[:20] if rep_c_info and rep_c_info.hostname else None, kst_now))
+                    logger.warning(f"[*] IP Block (429/Captcha) for task {actual_task_id}: LTE IP {rep_lte_ip} locked for 20 mins.")
+                elif any(m in err_msg for m in ('NETWORK_TIMEOUT', 'FRIDA_CRASH', 'NMAP_CRASH', 'APP CLOSED', 'TIMEOUT_15M', 'IDENTITY_LEAK_DETECTED')):
+                    if rep_lte_ip:
+                        cursor.execute("""
+                            DELETE FROM lte_ip_allocation_history 
+                            WHERE lte_ip = %s AND dest_id = %s AND allocated_at >= %s - INTERVAL 20 MINUTE
+                        """, (rep_lte_ip, task_row['dest_id'], kst_now))
+                    logger.info(f"[*] Clean Failure '{report.message}' for task {actual_task_id}: LTE IP {rep_lte_ip} unlocked for immediate re-allocation.")
+                elif "ADDRESS_NOT_FOUND" in err_msg or "ADDRESS_NOT_FOUND" in status_str:
+                    cursor.execute("UPDATE places SET check_status = 'FAIL' WHERE dest_id = %s", (task_row['dest_id'],))
+                    logger.warning(f"[*] Address Not Found for dest_id {task_row['dest_id']}: Marked place as FAIL.")
+
                 if "ERROR_LOG_DETECTED" in err_msg or "ERROR_LOG_DETECTED" in status_str:
                     is_error_log = True
 

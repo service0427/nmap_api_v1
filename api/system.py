@@ -94,3 +94,61 @@ def report_lte_usage(report: LteUsageReport, request: Request):
     except Exception as e: 
         logger.error(f"LTE Usage Error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
+class StopTaskRequest(BaseModel):
+    hostname: Optional[str] = None
+    device_id: str
+    reason: Optional[str] = "INTERRUPTED_BY_ADMIN"
+
+@router.post("/api/v1/stop_device_task")
+def stop_device_task(req: StopTaskRequest, request: Request):
+    """
+    Stops active tasks for a device in DB and sends a remote stop/kill signal via Tailscale to the client host PC.
+    """
+    kst_now = get_kst_now()
+    with get_db_cursor() as cursor:
+        # 1. Update tasks_log to CANCELED
+        cursor.execute("""
+            UPDATE tasks_log 
+            SET status = 'CANCELED', result_msg = %s, end_time = %s 
+            WHERE device_id = %s AND end_time IS NULL
+        """, (f"STOPPED: {req.reason}", kst_now, req.device_id))
+        stopped_cnt = cursor.rowcount
+        
+        # 2. Get Tailscale IP of client host
+        target_tailscale_ip = None
+        hostname = req.hostname
+        if not hostname:
+            cursor.execute("SELECT hostname FROM devices WHERE device_id = %s", (req.device_id,))
+            dev_row = cursor.fetchone()
+            if dev_row:
+                hostname = dev_row.get('hostname')
+                
+        if hostname:
+            cursor.execute("SELECT tailscale_ip FROM client_hosts WHERE hostname = %s", (hostname,))
+            host_row = cursor.fetchone()
+            if host_row:
+                target_tailscale_ip = host_row.get('tailscale_ip')
+
+        # 3. Attempt to send remote HTTP stop trigger over Tailscale to client host PC (Port 9000)
+        tailscale_triggered = False
+        if target_tailscale_ip:
+            import urllib.request
+            import json
+            try:
+                stop_url = f"http://{target_tailscale_ip}:9000/api/client/stop"
+                payload = json.dumps({"device_id": req.device_id, "reason": req.reason}).encode('utf-8')
+                req_obj = urllib.request.Request(stop_url, data=payload, headers={'Content-Type': 'application/json'})
+                with urllib.request.urlopen(req_obj, timeout=2) as resp:
+                    tailscale_triggered = True
+            except Exception as e:
+                logger.info(f"Tailscale remote signal to {target_tailscale_ip}:9000 skipped or offline ({e})")
+                
+        return {
+            "status": "ok",
+            "device_id": req.device_id,
+            "hostname": hostname,
+            "tailscale_ip": target_tailscale_ip,
+            "stopped_tasks": stopped_cnt,
+            "tailscale_signal_sent": tailscale_triggered
+        }

@@ -66,7 +66,7 @@ def request_task(req: TaskRequest, request: Request):
         resolved_ip = get_client_ip(request)
         if resolved_ip and resolved_ip != "unknown":
             client_ip = resolved_ip
-    WORKING_LOCK_SEC = 900 # 15 Minutes to wait for client progress report
+    WORKING_LOCK_SEC = 60 # 60-second safety lock window for 700 concurrent devices
     
     try:
         with allocation_lock:
