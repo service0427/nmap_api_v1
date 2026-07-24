@@ -157,6 +157,12 @@ def report_result(report: ResultReport, request: Request):
                 if task_row['status'] != 'SUCCESS':
                     update_device_stats(cursor, report.device_id, success=1)
                     cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
+                    
+                    rep_c_info = report.client_info
+                    rep_lte_ip = rep_c_info.lte_public_ip if rep_c_info and rep_c_info.lte_public_ip else None
+                    if rep_lte_ip:
+                        cursor.execute("INSERT INTO lte_ip_success_history (lte_ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (rep_lte_ip, task_row['dest_id'], kst_now))
+                    
                     cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) VALUES (%s, %s, %s, %s, 1, 0, 0, %s, %s) ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), miss_cnt=0, last_dist_m=VALUES(last_dist_m)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid'], task_row['distance_m'], kst_now))
             elif report.status == 'CANCELED':
                 pass

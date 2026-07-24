@@ -102,13 +102,17 @@ def request_task(req: TaskRequest, request: Request):
                 cursor.execute("SELECT dest_id FROM tasks_log WHERE end_time IS NULL AND created_at > %s - INTERVAL %s SECOND", (kst_now, WORKING_LOCK_SEC))
                 locked_dest_ids = {str(row['dest_id']) for row in cursor.fetchall()}
 
-                # IP Exclusivity: Same IP cannot take same dest_id within the last 20 minutes
-                if client_ip:
-                    twenty_mins_ago = kst_now - timedelta(minutes=20)
+                # IP Exclusivity: Same LTE IP cannot take same dest_id within the last 20 minutes
+                lte_ip = c_info.lte_public_ip if c_info and c_info.lte_public_ip else None
+                twenty_mins_ago = kst_now - timedelta(minutes=20)
+                ip_allocated_ids = set()
+                
+                if lte_ip:
+                    cursor.execute("SELECT dest_id FROM lte_ip_allocation_history WHERE lte_ip = %s AND allocated_at >= %s", (lte_ip, twenty_mins_ago))
+                    ip_allocated_ids = {str(row['dest_id']) for row in cursor.fetchall()}
+                elif client_ip:
                     cursor.execute("SELECT dest_id FROM ip_allocation_history WHERE ip = %s AND allocated_at >= %s", (client_ip, twenty_mins_ago))
                     ip_allocated_ids = {str(row['dest_id']) for row in cursor.fetchall()}
-                else:
-                    ip_allocated_ids = set()
 
                 is_only_opt = bool(req.only_optimizer)
                 if is_only_opt:
@@ -444,6 +448,12 @@ def request_task(req: TaskRequest, request: Request):
                 
                 v1_task_id = cursor.connection.insert_id()
                 cursor.execute("UPDATE devices SET last_allocated_at = %s WHERE device_id = %s", (kst_now, req.device_id))
+
+                if lte_ip:
+                    cursor.execute("""
+                        INSERT INTO lte_ip_allocation_history (lte_ip, dest_id, device_id, hostname, allocated_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (lte_ip, task['dest_id'], req.device_id, c_info.hostname[:20] if c_info and c_info.hostname else None, kst_now))
 
 
                 

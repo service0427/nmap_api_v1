@@ -52,6 +52,10 @@ def aggregate_daily_quota():
                         print(f"    Deleted old ip_success_history: {cursor.rowcount} rows")
                         cursor.execute("DELETE FROM ip_allocation_history WHERE allocated_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)")
                         print(f"    Deleted old ip_allocation_history: {cursor.rowcount} rows")
+                        cursor.execute("DELETE FROM lte_ip_success_history WHERE last_success_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)")
+                        print(f"    Deleted old lte_ip_success_history: {cursor.rowcount} rows")
+                        cursor.execute("DELETE FROM lte_ip_allocation_history WHERE allocated_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)")
+                        print(f"    Deleted old lte_ip_allocation_history: {cursor.rowcount} rows")
                     except Exception as ex_clean:
                         print(f"    Error during database cleanup: {ex_clean}")
                     
