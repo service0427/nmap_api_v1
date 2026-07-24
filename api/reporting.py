@@ -160,6 +160,12 @@ def report_result(report: ResultReport, request: Request):
                     
                     rep_c_info = report.client_info
                     rep_lte_ip = rep_c_info.lte_public_ip if rep_c_info and rep_c_info.lte_public_ip else None
+                    if not rep_lte_ip and report.device_id:
+                        cursor.execute("SELECT current_ip FROM devices WHERE device_id = %s", (report.device_id,))
+                        dev_ip_row = cursor.fetchone()
+                        if dev_ip_row and dev_ip_row.get('current_ip') and dev_ip_row['current_ip'] not in ('0.0.0.0', 'unknown', 'Unknown'):
+                            rep_lte_ip = dev_ip_row['current_ip']
+                    
                     if rep_lte_ip:
                         cursor.execute("INSERT INTO lte_ip_success_history (lte_ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (rep_lte_ip, task_row['dest_id'], kst_now))
                     
@@ -408,6 +414,16 @@ def update_status(data: StatusUpdate, request: Request):
                             if data.device_id:
                                 update_device_stats(cursor, data.device_id, success=1)
                             cursor.execute("INSERT INTO ip_success_history (ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (task_row['ip'], task_row['dest_id'], kst_now))
+                            
+                            status_c_info = data.client_info
+                            status_lte_ip = status_c_info.lte_public_ip if status_c_info and status_c_info.lte_public_ip else None
+                            if not status_lte_ip and resolved_device_id:
+                                cursor.execute("SELECT current_ip FROM devices WHERE device_id = %s", (resolved_device_id,))
+                                dev_ip_row = cursor.fetchone()
+                                if dev_ip_row and dev_ip_row.get('current_ip') and dev_ip_row['current_ip'] not in ('0.0.0.0', 'unknown', 'Unknown'):
+                                    status_lte_ip = dev_ip_row['current_ip']
+                            if status_lte_ip:
+                                cursor.execute("INSERT INTO lte_ip_success_history (lte_ip, dest_id, last_success_at) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE last_success_at = VALUES(last_success_at)", (status_lte_ip, task_row['dest_id'], kst_now))
                             cursor.execute("INSERT INTO daily_progress (work_date, site_id, dest_id, sid, success_cnt, fail_cnt, alloc_fail_cnt, last_dist_m, last_success_at) VALUES (%s, %s, %s, %s, 1, 0, 0, %s, %s) ON DUPLICATE KEY UPDATE success_cnt=success_cnt+1, last_success_at=VALUES(last_success_at), miss_cnt=0, last_dist_m=VALUES(last_dist_m)", (kst_date, task_row['site_id'], task_row['dest_id'], task_row['sid'], task_row['distance_m'], kst_now))
                     else:
                         # Log to fail_log
