@@ -31,10 +31,15 @@ class ClientInfo(BaseModel):
     tailscale_ip: Optional[str] = None
     local_ip: Optional[str] = None
     public_ip: Optional[str] = None
+    host_public_ip: Optional[str] = None
+    lte_public_ip: Optional[str] = None
     network_type: Optional[str] = None
     nmap_version: Optional[str] = None
     client_version: Optional[str] = None
     usb_slot: Optional[str] = None
+    cpu_usage_pct: Optional[Union[float, int]] = None
+    ram_usage_pct: Optional[Union[float, int]] = None
+    disk_usage_pct: Optional[Union[float, int]] = None
 
 class TaskRequest(BaseModel):
     device_id: str
@@ -52,7 +57,11 @@ def request_task(req: TaskRequest, request: Request):
     
     kst_now, kst_date = get_kst_now().replace(tzinfo=None), get_kst_date()
     success_limit = Config.get_dest_success_limit()
+    
+    c_info = req.client_info
     client_ip = req.ip if req.ip and req.ip != "0.0.0.0" and req.ip != "unknown" else None
+    if not client_ip and c_info and (c_info.lte_public_ip or c_info.host_public_ip or c_info.public_ip):
+        client_ip = c_info.lte_public_ip or c_info.host_public_ip or c_info.public_ip
     if not client_ip:
         resolved_ip = get_client_ip(request)
         if resolved_ip and resolved_ip != "unknown":
@@ -67,33 +76,8 @@ def request_task(req: TaskRequest, request: Request):
                 if device_reported_ip:
                     helpers.update_device_ip(cursor, req.device_id, device_reported_ip, kst_now)
                 
-                c_info = req.client_info
                 if c_info:
-                    dev_updates, dev_params = [], []
-                    if c_info.hostname:
-                        dev_updates.append("hostname = %s")
-                        dev_params.append(c_info.hostname[:20])
-                    if c_info.tailscale_ip:
-                        dev_updates.append("tailscale_ip = %s")
-                        dev_params.append(c_info.tailscale_ip[:45])
-                    if c_info.local_ip:
-                        dev_updates.append("local_ip = %s")
-                        dev_params.append(c_info.local_ip[:45])
-                    if c_info.network_type:
-                        dev_updates.append("network_type = %s")
-                        dev_params.append(c_info.network_type[:20])
-                    if c_info.nmap_version:
-                        dev_updates.append("nmap_version = %s")
-                        dev_params.append(c_info.nmap_version[:20])
-                    if c_info.client_version:
-                        dev_updates.append("client_version = %s")
-                        dev_params.append(c_info.client_version[:20])
-                    if c_info.usb_slot:
-                        dev_updates.append("usb_slot = %s")
-                        dev_params.append(c_info.usb_slot[:20])
-                    if dev_updates:
-                        dev_params.append(req.device_id)
-                        cursor.execute(f"UPDATE devices SET {', '.join(dev_updates)} WHERE device_id = %s", tuple(dev_params))
+                    helpers.upsert_client_info(cursor, req.device_id, c_info, kst_now)
                 
                 # 1. Device Verification
                 cursor.execute("SELECT seq, device_id, status, orig_ssaid, orig_adid, orig_idfv, orig_ni, orig_token, last_allocated_at, penalty_until FROM devices WHERE device_id = %s AND status = 'on'", (req.device_id,))

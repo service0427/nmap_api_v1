@@ -120,7 +120,87 @@ def update_device_ip(cursor, device_id: str, new_ip: str, kst_now):
             (device_id, prev_ip, new_ip, kst_now)
         )
         return True
-    return False
+def upsert_client_info(cursor, device_id: str, c_info: Any, kst_now):
+    if not c_info:
+        return
+    
+    # 1. Upsert into client_hosts table if hostname is present
+    hostname = (getattr(c_info, 'hostname', None) or '').strip()
+    if hostname:
+        hostname_val = hostname[:20]
+        tailscale_ip = getattr(c_info, 'tailscale_ip', None)
+        local_ip = getattr(c_info, 'local_ip', None)
+        host_public_ip = getattr(c_info, 'host_public_ip', None) or getattr(c_info, 'public_ip', None)
+        network_type = getattr(c_info, 'network_type', None)
+        client_version = getattr(c_info, 'client_version', None)
+        cpu_usage = getattr(c_info, 'cpu_usage_pct', None)
+        ram_usage = getattr(c_info, 'ram_usage_pct', None)
+        disk_usage = getattr(c_info, 'disk_usage_pct', None)
+        
+        cursor.execute("""
+            INSERT INTO client_hosts (
+                hostname, tailscale_ip, local_ip, host_public_ip, network_type, client_version,
+                cpu_usage_pct, ram_usage_pct, disk_usage_pct, last_seen_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                tailscale_ip = COALESCE(VALUES(tailscale_ip), tailscale_ip),
+                local_ip = COALESCE(VALUES(local_ip), local_ip),
+                host_public_ip = COALESCE(VALUES(host_public_ip), host_public_ip),
+                network_type = COALESCE(VALUES(network_type), network_type),
+                client_version = COALESCE(VALUES(client_version), client_version),
+                cpu_usage_pct = IFNULL(VALUES(cpu_usage_pct), cpu_usage_pct),
+                ram_usage_pct = IFNULL(VALUES(ram_usage_pct), ram_usage_pct),
+                disk_usage_pct = IFNULL(VALUES(disk_usage_pct), disk_usage_pct),
+                last_seen_at = VALUES(last_seen_at)
+        """, (
+            hostname_val,
+            tailscale_ip[:45] if tailscale_ip else None,
+            local_ip[:45] if local_ip else None,
+            host_public_ip[:45] if host_public_ip else None,
+            network_type[:20] if network_type else None,
+            client_version[:50] if client_version else None,
+            cpu_usage, ram_usage, disk_usage, kst_now
+        ))
+
+    # 2. Update device row in devices table
+    if device_id:
+        dev_updates, dev_params = [], []
+        if hostname:
+            dev_updates.append("hostname = %s")
+            dev_params.append(hostname[:20])
+        tailscale_ip = getattr(c_info, 'tailscale_ip', None)
+        if tailscale_ip:
+            dev_updates.append("tailscale_ip = %s")
+            dev_params.append(tailscale_ip[:45])
+        local_ip = getattr(c_info, 'local_ip', None)
+        if local_ip:
+            dev_updates.append("local_ip = %s")
+            dev_params.append(local_ip[:45])
+        network_type = getattr(c_info, 'network_type', None)
+        if network_type:
+            dev_updates.append("network_type = %s")
+            dev_params.append(network_type[:20])
+        nmap_version = getattr(c_info, 'nmap_version', None)
+        if nmap_version:
+            dev_updates.append("nmap_version = %s")
+            dev_params.append(nmap_version[:20])
+        client_version = getattr(c_info, 'client_version', None)
+        if client_version:
+            dev_updates.append("client_version = %s")
+            dev_params.append(client_version[:20])
+        usb_slot = getattr(c_info, 'usb_slot', None)
+        if usb_slot:
+            dev_updates.append("usb_slot = %s")
+            dev_params.append(usb_slot[:20])
+
+        if dev_updates:
+            dev_params.append(device_id)
+            cursor.execute(f"UPDATE devices SET {', '.join(dev_updates)} WHERE device_id = %s", tuple(dev_params))
+            
+        # If lte_public_ip is provided, update device current_ip!
+        lte_ip = getattr(c_info, 'lte_public_ip', None)
+        if lte_ip:
+            update_device_ip(cursor, device_id, lte_ip, kst_now)
 
 def log_allocation_failure(cursor, device_id, error_msg, ip, payload=None):
     kst_now = get_kst_now()
