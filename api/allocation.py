@@ -49,6 +49,32 @@ class TaskRequest(BaseModel):
     only_optimizer: Optional[bool] = False
     client_info: Optional[ClientInfo] = None
 
+def interleave_by_site(candidates):
+    """
+    Groups candidates by site_id, shuffles each site's candidates,
+    and round-robin interleaves them so large sites (e.g. GHOST2026)
+    do not starve smaller sites (e.g. WJDTJR07, SSOLUP, LUF, RUDOLPH).
+    """
+    if not candidates:
+        return []
+    by_site = {}
+    for cand in candidates:
+        by_site.setdefault(cand['site_id'], []).append(cand)
+    
+    for s_id in by_site:
+        random.shuffle(by_site[s_id])
+    
+    sites = list(by_site.keys())
+    random.shuffle(sites)
+    
+    result = []
+    max_len = max(len(lst) for lst in by_site.values())
+    for i in range(max_len):
+        for s_id in sites:
+            if i < len(by_site[s_id]):
+                result.append(by_site[s_id][i])
+    return result
+
 @router.post("/api/v1/request_task")
 def request_task(req: TaskRequest, request: Request):
     # Increment metrics on shared helpers module
@@ -93,8 +119,8 @@ def request_task(req: TaskRequest, request: Request):
                     return {"status": "error", "msg": "PENALTY_ACTIVE"}
 
                 # 1b. Cooldown check (60-second limit between allocations)
-                last_alloc = device_row.get('last_allocated_at')
-                if last_alloc and (kst_now - last_alloc).total_seconds() < 60:
+                last_allocated = device_row.get('last_allocated_at')
+                if last_allocated and (kst_now - last_allocated).total_seconds() < 60:
                     log_allocation_failure(cursor, req.device_id, "COOLDOWN_ACTIVE", client_ip or "unknown", req.dict())
                     return {"status": "error", "msg": "COOLDOWN_ACTIVE"}
 
@@ -179,17 +205,16 @@ def request_task(req: TaskRequest, request: Request):
                     else:
                         group_rest.append(cand)
 
-                # 3. Allocation decision with pool coordinate validation
+                # 3. Allocation decision with pool coordinate validation & site-level fair share interleaving
                 task = None
                 pool_row = None
                 candidate_lists = []
                 
                 if group_zero:
-                    random.shuffle(group_zero)
-                    candidate_lists.append(group_zero)
+                    candidate_lists.append(interleave_by_site(group_zero))
                 
                 if group_fail:
-                    # Group by fail_cnt (descending) and shuffle each bucket to avoid patterns
+                    # Group by fail_cnt (descending) and site-interleave each bucket
                     fail_buckets = {}
                     for cand in group_fail:
                         fc = cand['fail_cnt']
@@ -198,12 +223,11 @@ def request_task(req: TaskRequest, request: Request):
                     sorted_fails = []
                     for fc in sorted(fail_buckets.keys(), reverse=True):
                         bucket = fail_buckets[fc]
-                        random.shuffle(bucket)
-                        sorted_fails.extend(bucket)
+                        sorted_fails.extend(interleave_by_site(bucket))
                     candidate_lists.append(sorted_fails)
                     
                 if group_rest:
-                    # Group by achievement rate (ascending in 10% buckets) and shuffle each bucket to avoid patterns
+                    # Group by achievement rate (ascending in 10% buckets) and site-interleave each bucket
                     rate_buckets = {}
                     for cand in group_rest:
                         target = cand['total_target']
@@ -216,8 +240,7 @@ def request_task(req: TaskRequest, request: Request):
                     sorted_rests = []
                     for idx in sorted(rate_buckets.keys()):
                         bucket = rate_buckets[idx]
-                        random.shuffle(bucket)
-                        sorted_rests.extend(bucket)
+                        sorted_rests.extend(interleave_by_site(bucket))
                     candidate_lists.append(sorted_rests)
 
                 for cand_list in candidate_lists:
