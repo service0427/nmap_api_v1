@@ -9,8 +9,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.config import Config
 from core.utils import get_kst_date
 
-API_URL = "https://ssolup.com/api/external/work"
-DB_NAME = "ssolup"
+# IEUM2027 전용 설정
+API_URL = "https://ieum2027.link/api/external/work"
+DB_NAME = "ieum2027"
 
 def get_default_work_amount():
     db_config = Config.get_db_config()
@@ -37,12 +38,13 @@ def get_default_work_amount():
                 if row and row.get('value'):
                     return int(row['value'])
         except Exception as e2:
-            print(f"[SSOLUP] Failed to fetch default_work_amount from DB ({e2}). Falling back to 5.")
+            print(f"[IEUM2027] Failed to fetch default_work_amount from DB ({e2}). Falling back to 5.")
     return 5
 
 def fetch_data():
     """
-    SSOLUP API로부터 데이터를 수집하여 표준 형식으로 반환.
+    IEUM2027 API로부터 데이터를 수집하여 표준 형식으로 반환.
+    동일 계열 사이트(/api/external/work) 규격 지원.
     """
     try:
         kst_today = get_kst_date()
@@ -50,29 +52,31 @@ def fetch_data():
         kst_date_str = kst_today.strftime("%Y%m%d")
         
         url = f"{API_URL}?date={kst_today_iso}"
-        print(f"[SSOLUP] Fetching data from: {url}")
+        print(f"[IEUM2027] Fetching data from: {url}")
         
         resp = requests.get(url, timeout=15)
         if resp.status_code != 200:
-            print(f"[SSOLUP] HTTP Error: {resp.status_code}")
+            print(f"[IEUM2027] HTTP Error: {resp.status_code}")
             return []
             
         res_data = resp.json()
         
+        # Handle both list format and object format ({'items': [...]})
         if isinstance(res_data, list):
             raw_items = res_data
         elif isinstance(res_data, dict):
             raw_items = res_data.get('items', [])
         else:
-            print(f"[SSOLUP] Unexpected response type: {type(res_data)}")
+            print(f"[IEUM2027] Unexpected response type: {type(res_data)}")
             return []
 
         if not raw_items:
-            print("[SSOLUP] API returned 0 items.")
+            print("[IEUM2027] API returned 0 items (site is newly registered or no active tasks today).")
             return []
 
         default_work_amount = get_default_work_amount()
         
+        # Aggregate work_amount by code
         aggregated = {}
         for item in raw_items:
             code = str(item.get('code') or item.get('dest_id') or '').strip()
@@ -110,9 +114,9 @@ def fetch_data():
                 'target_url': f"https://m.place.naver.com/place/{code}"
             })
             
-        print(f"[SSOLUP] Successfully processed {len(standardized_data)} slots.")
+        print(f"[IEUM2027] Successfully processed {len(standardized_data)} slots.")
         return standardized_data
 
     except Exception as e:
-        print(f"[SSOLUP] Fetch Exception: {e}")
+        print(f"[IEUM2027] Fetch Exception: {e}")
         return []
