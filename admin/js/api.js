@@ -149,6 +149,24 @@ export function updateUI(data) {
   if (wjdProgressFill) wjdProgressFill.style.width = `${Math.min(100, wjdPct)}%`;
   if (wjdCounts) wjdCounts.innerText = formatCounts(stats.wjd_success, stats.wjd_target, stats.wjd_fail);
 
+  // ieum
+  const ieumPct = stats.ieum_target > 0 ? Math.round((stats.ieum_success / stats.ieum_target) * 100) : 0;
+  const ieumPctEl = document.getElementById("ieum-percent");
+  const ieumProgressFill = document.getElementById("ieum-progress-fill");
+  const ieumCounts = document.getElementById("ieum-counts");
+  if (ieumPctEl) ieumPctEl.innerText = `${ieumPct}%`;
+  if (ieumProgressFill) ieumProgressFill.style.width = `${Math.min(100, ieumPct)}%`;
+  if (ieumCounts) ieumCounts.innerText = formatCounts(stats.ieum_success, stats.ieum_target, stats.ieum_fail);
+
+  // honey
+  const honeyPct = stats.honey_target > 0 ? Math.round((stats.honey_success / stats.honey_target) * 100) : 0;
+  const honeyPctEl = document.getElementById("honey-percent");
+  const honeyProgressFill = document.getElementById("honey-progress-fill");
+  const honeyCounts = document.getElementById("honey-counts");
+  if (honeyPctEl) honeyPctEl.innerText = `${honeyPct}%`;
+  if (honeyProgressFill) honeyProgressFill.style.width = `${Math.min(100, honeyPct)}%`;
+  if (honeyCounts) honeyCounts.innerText = formatCounts(stats.honey_success, stats.honey_target, stats.honey_fail);
+
   // Total Unified
   const totalPct = stats.total_target > 0 ? Math.round((stats.success / stats.total_target) * 100) : 0;
   const totalPctEl = document.getElementById("total-percent");

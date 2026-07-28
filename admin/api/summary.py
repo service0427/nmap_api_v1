@@ -67,6 +67,12 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
     wjd = stats_by_site.get('WJDTJR07', {'target': 0, 'success': 0, 'fail': 0})
     if not wjd or (wjd.get('target', 0) == 0 and wjd.get('success', 0) == 0 and wjd.get('fail', 0) == 0):
         wjd = stats_by_site.get('WJDTJR', {'target': 0, 'success': 0, 'fail': 0})
+    ieum = stats_by_site.get('IEUM2027', {'target': 0, 'success': 0, 'fail': 0})
+    if not ieum or (ieum.get('target', 0) == 0 and ieum.get('success', 0) == 0 and ieum.get('fail', 0) == 0):
+        ieum = stats_by_site.get('IEUM', {'target': 0, 'success': 0, 'fail': 0})
+    honey = stats_by_site.get('HONEY2026', {'target': 0, 'success': 0, 'fail': 0})
+    if not honey or (honey.get('target', 0) == 0 and honey.get('success', 0) == 0 and honey.get('fail', 0) == 0):
+        honey = stats_by_site.get('HONEY', {'target': 0, 'success': 0, 'fail': 0})
     test = stats_by_site.get('TEST', {'target': 0, 'success': 0, 'fail': 0})
     
     fsd_target = fsd['target'] or 0
@@ -96,14 +102,22 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
     wjd_target = wjd['target'] or 0
     wjd_success = wjd['success'] or 0
     wjd_fail = wjd['fail'] or 0
+
+    ieum_target = ieum['target'] or 0
+    ieum_success = ieum['success'] or 0
+    ieum_fail = ieum['fail'] or 0
+
+    honey_target = honey['target'] or 0
+    honey_success = honey['success'] or 0
+    honey_fail = honey['fail'] or 0
     
     test_target = test['target'] or 0
     test_success = test['success'] or 0
     test_fail = test['fail'] or 0
     
-    total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target + quixslot_target + wjd_target
-    total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success + quixslot_success + wjd_success
-    total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail + quixslot_fail + wjd_fail
+    total_active_target = luf_target + ssolup_target + ghost_target + rudolph_target + quixslot_target + wjd_target + ieum_target + honey_target
+    total_active_success = luf_success + ssolup_success + ghost_success + rudolph_success + quixslot_success + wjd_success + ieum_success + honey_success
+    total_active_fail = luf_fail + ssolup_fail + ghost_fail + rudolph_fail + quixslot_fail + wjd_fail + ieum_fail + honey_fail
     
     return {
         "fsd_target": fsd_target,
@@ -127,6 +141,12 @@ def get_stats_for_date(cursor, target_date, has_is_deleted):
         "wjd_target": wjd_target,
         "wjd_success": wjd_success,
         "wjd_fail": wjd_fail,
+        "ieum_target": ieum_target,
+        "ieum_success": ieum_success,
+        "ieum_fail": ieum_fail,
+        "honey_target": honey_target,
+        "honey_success": honey_success,
+        "honey_fail": honey_fail,
         "test_target": test_target,
         "test_success": test_success,
         "test_fail": test_fail,
